@@ -873,6 +873,7 @@ public class PeripheralScreen extends Screen {
     public void tick() {
         super.tick();
         if (saveTick > 0) saveTick--;
+        if (logCopiedTick > 0) logCopiedTick--;
         // Pick up file access requests from running scripts
         String far = ScriptRunner.fileAccessRequestScript;
         if (far != null && fileAccessConfirmPath == null) {
@@ -949,7 +950,7 @@ public class PeripheralScreen extends Screen {
         }
 
         switch (currentTab) {
-            case TAB_LOG      -> renderLog(ctx, my);
+            case TAB_LOG      -> renderLog(ctx, mx, my);
             case TAB_SCRIPTS  -> renderScripts(ctx);
             case TAB_SETTINGS -> renderSettings(ctx);
             case TAB_STORE    -> renderStore(ctx);
@@ -977,7 +978,10 @@ public class PeripheralScreen extends Screen {
 
     // ── Tab renders ───────────────────────────────────────────────────────────
 
-    private void renderLog(DrawContext ctx, int mouseY) {
+    // Log tab copy state
+    private int logCopiedTick = 0;
+
+    private void renderLog(DrawContext ctx, int mouseX, int mouseY) {
         logUrlByY.clear();
 
         List<String> log   = PeripheralStateTracker.getLog(80);
@@ -987,21 +991,24 @@ public class PeripheralScreen extends Screen {
         int start = Math.max(0, log.size() - vis - logScroll);
         int end   = Math.min(log.size(), start + vis);
 
+        boolean mouseInLog = mouseX >= px + 2 && mouseX < px + W - 2;
+
         for (int i = start; i < end; i++) {
-            String line   = log.get(i);
-            int    ty     = contentY + 3 + (i - start) * lineH;
+            String line      = log.get(i);
+            int    ty        = contentY + 3 + (i - start) * lineH;
             int    baseColor = logColor(line);
+            boolean hovered  = mouseInLog && mouseY >= ty && mouseY < ty + lineH;
+
+            // Hover highlight
+            if (hovered)
+                ctx.fill(px + 2, ty - 1, px + W - 2, ty + lineH - 1, 0x22FFFFFF);
 
             Matcher m = URL_PAT.matcher(line);
             if (m.find()) {
-                // Store url so mouseClicked can open it
                 String url = m.group();
                 logUrlByY.put(ty, url);
 
-                // Render:  [before] [URL in link colour] [after]
-                boolean hovered = (mouseY >= ty && mouseY < ty + lineH);
-                int     urlColor = hovered ? C_URL_HOVER : C_URL;
-
+                int urlColor = hovered ? C_URL_HOVER : C_URL;
                 String before = line.substring(0, m.start());
                 String after  = line.substring(m.end());
 
@@ -1011,7 +1018,6 @@ public class PeripheralScreen extends Screen {
                     x += textRenderer.getWidth(before);
                 }
                 ctx.drawText(textRenderer, Text.literal(url), x, ty, urlColor, false);
-                // Underline — a thin 1px line at the bottom of the glyph row
                 int uw = textRenderer.getWidth(url);
                 ctx.fill(x, ty + lineH - 1, x + uw, ty + lineH, urlColor);
                 if (!after.isEmpty()) {
@@ -1021,6 +1027,11 @@ public class PeripheralScreen extends Screen {
                 ctx.drawText(textRenderer, Text.literal(line), px + 4, ty, baseColor, false);
             }
         }
+
+        // "Copied!" toast
+        if (logCopiedTick > 0)
+            ctx.drawCenteredTextWithShadow(textRenderer, Text.literal("§aCopied!"),
+                px + W / 2, contentY + contentH - 10, C_GREEN);
     }
 
     private static int logColor(String l) {
@@ -1394,18 +1405,27 @@ public class PeripheralScreen extends Screen {
             }
         }
 
-        // Left-click on a URL row in the Log tab → open it in the default browser.
-        // Click.x/y are already in GUI (scaled) coordinates — the same system
-        // render() uses — so no conversion is needed.
+        // Left-click on a log row — open URL if one exists, otherwise copy line to clipboard
         if (click.button() == 0 && currentTab == TAB_LOG) {
-            double my = click.y();
-            for (Map.Entry<Integer, String> entry : logUrlByY.entrySet()) {
-                int rowY = entry.getKey();
-                if (my >= rowY && my < rowY + 10) {
-                    String url = entry.getValue();
-                    try {
-                        Util.getOperatingSystem().open(URI.create(url));
-                    } catch (Exception ignored) {}
+            double mx = click.x(), my = click.y();
+            if (mx >= px + 2 && mx < px + W - 2) {
+                for (Map.Entry<Integer, String> entry : logUrlByY.entrySet()) {
+                    int rowY = entry.getKey();
+                    if (my >= rowY && my < rowY + 10) {
+                        try { Util.getOperatingSystem().open(URI.create(entry.getValue())); }
+                        catch (Exception ignored) {}
+                        return true;
+                    }
+                }
+                // No URL on this row — copy the line text
+                List<String> log = PeripheralStateTracker.getLog(80);
+                int lineH = 9, vis = (contentH - 4) / lineH;
+                int start = Math.max(0, log.size() - vis - logScroll);
+                int relLine = ((int) my - contentY - 3) / lineH;
+                int absLine = start + relLine;
+                if (relLine >= 0 && absLine < log.size()) {
+                    client.keyboard.setClipboard(log.get(absLine));
+                    logCopiedTick = 40;
                     return true;
                 }
             }
