@@ -519,10 +519,29 @@ public class PeripheralScreen extends Screen {
     private void openBuildPicker() {
         client.setScreen(new BuildPickerScreen(this,
             // onOpen: resume existing session with history
-            name -> { openBuildSession(name);    client.setScreen(this); },
-            // onNew:  start a blank session (clear any existing chat for that name)
-            name -> { openBuildSession(name); if (s_build != null) { s_build.clearChat(); s_lastMsgCount = 0; } client.setScreen(this); }
+            name -> { openBuildSession(name); client.setScreen(this); },
+            // onNew: find a unique script name, clear chat, start fresh
+            name -> {
+                String unique = uniqueScriptName(name);
+                openBuildSession(unique);
+                if (s_build != null) { s_build.clearChat(); s_lastMsgCount = 0; }
+                client.setScreen(this);
+            }
         ));
+    }
+
+    /** If the script file already exists, append _1, _2, … until a free name is found. */
+    private String uniqueScriptName(String name) {
+        if (name == null || name.isBlank()) name = "my_script.py";
+        if (!name.endsWith(".py")) name += ".py";
+        String base = name.substring(0, name.length() - 3); // strip .py
+        String candidate = name;
+        int n = 1;
+        while (Files.exists(ScriptRunner.SCRIPTS_DIR.resolve(candidate))) {
+            candidate = base + "_" + n + ".py";
+            n++;
+        }
+        return candidate;
     }
 
     private void openBuildSession(String name) {
