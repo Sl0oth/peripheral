@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Submit a Script — Peripheral Store</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<nav>
+  <span class="logo">◈ Peripheral Store</span>
+  <a href="/">Browse</a>
+  <a href="/submit">Submit a Script</a>
+</nav>
+
+<div class="container">
+  <h1>Submit a Script</h1>
+  <p>Share a script you made with the Peripheral community. All submissions are reviewed before going live.</p>
+
+  <div class="disclaimer">
+    <strong>⚠ Read before submitting.</strong><br><br>
+    By submitting a script you confirm that:<br>
+    • You wrote it or have permission to share it.<br>
+    • It does not contain malware, backdoors, or code designed to harm other players or their systems.<br>
+    • You accept <strong>sole and complete responsibility</strong> for your script and any consequences of others running it.<br><br>
+    The Peripheral mod author (<strong>Slooth</strong>) reviews submissions but provides
+    <strong>zero guarantee</strong> that any script is safe, and accepts
+    <strong>absolutely no liability</strong> — 0% — for any damage, data loss,
+    account compromise, or any other outcome caused by community scripts.
+    Anyone who installs your script does so at their own risk.
+  </div>
+
+  <div id="alert" style="display:none"></div>
+
+  <form id="submit-form" onsubmit="submitScript(event)">
+
+    <div class="form-group">
+      <label for="name">Script Name *</label>
+      <input type="text" id="name" placeholder="e.g. Auto Fish, Mob Alert, Night Vision Toggle" maxlength="64" required>
+    </div>
+
+    <div class="form-group">
+      <label for="description">Description * <span style="color:var(--muted)">(what it does, any requirements)</span></label>
+      <textarea id="description" placeholder="Describe what your script does, how to use it, and any mods or setup it requires..." maxlength="1000" required></textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="code">Script Code * <span style="color:var(--muted)">(must start with <code style="color:var(--accent)">from mc import *</code>)</span></label>
+      <textarea id="code" class="code" placeholder="from mc import *&#10;&#10;# Your script here..." maxlength="32000" required></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Author</label>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <label class="checkbox-row">
+          <input type="checkbox" id="anonymous" onchange="toggleAuthor()">
+          Post anonymously
+        </label>
+        <div id="author-field">
+          <input type="text" id="author" placeholder="Your Minecraft username" maxlength="64">
+        </div>
+      </div>
+    </div>
+
+    <div class="disclaimer" style="font-size:0.8em">
+      By clicking Submit, you agree to everything in the disclaimer above.
+      You understand that the mod author reviews scripts but is
+      <strong>not liable in any way</strong> for community scripts.
+    </div>
+
+    <button type="submit" id="submit-btn">Submit for Review</button>
+
+  </form>
+</div>
+
+<script>
+function toggleAuthor() {
+  const anon = document.getElementById('anonymous').checked;
+  document.getElementById('author-field').style.display = anon ? 'none' : 'block';
+}
+
+function showAlert(type, msg) {
+  const el = document.getElementById('alert');
+  el.className = 'alert ' + type;
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function submitScript(e) {
+  e.preventDefault();
+  const btn  = document.getElementById('submit-btn');
+  const name        = document.getElementById('name').value.trim();
+  const description = document.getElementById('description').value.trim();
+  const code        = document.getElementById('code').value.trim();
+  const anonymous   = document.getElementById('anonymous').checked;
+  const author      = document.getElementById('author').value.trim();
+
+  if (!name || !description || !code) {
+    showAlert('error', 'Please fill in all required fields.'); return;
+  }
+  if (!code.startsWith('from mc import') && !code.startsWith('import')) {
+    showAlert('error', 'Script must start with a Python import (e.g. from mc import *).'); return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  try {
+    const res  = await fetch('/api/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, code, author, anonymous })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('submit-form').style.display = 'none';
+      showAlert('success',
+        '✓ Script submitted! It will appear in the store once reviewed. Thanks for contributing.');
+    } else {
+      showAlert('error', data.error || 'Submission failed.');
+      btn.disabled = false;
+      btn.textContent = 'Submit for Review';
+    }
+  } catch (err) {
+    showAlert('error', 'Server error. Please try again later.');
+    btn.disabled = false;
+    btn.textContent = 'Submit for Review';
+  }
+}
+</script>
+</body>
+</html>
