@@ -46,3 +46,10 @@ config/peripheral.json
 MODRINTH_DESCRIPTION.md
 CHANGELOG.md
 TODO.md
+
+# peripheral — store server (sensitive backend)
+store-server/
+store_routes_patch.py
+
+# UI scratch images
+Ui Examples/
