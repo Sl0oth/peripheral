@@ -109,3 +109,7 @@ Peripheral runs entirely on the client. No server installation needed. Works on 
 ## Disclaimer
 
 Provided as-is with no warranty. The author is not liable for loss of items or game progress, save file corruption, server bans, or any consequences from scripts you run. You are solely responsible for any scripts you create or execute. Full terms in [TERMS.md](TERMS.md).
+
+---
+
+*100% of the mod code was written by [Claude Code](https://claude.ai/code) (Anthropic's AI coding assistant), directed by Sl0oth.*
