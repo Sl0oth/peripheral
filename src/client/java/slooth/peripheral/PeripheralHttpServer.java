@@ -751,7 +751,10 @@ public class PeripheralHttpServer {
 
     private static void handleHudClear(HttpExchange ex) throws IOException {
         if (!ex.getRequestMethod().equals("POST")) { send(ex, 405, err("method_not_allowed")); return; }
-        PeripheralHud.clearElements();
+        JsonObject req = parseBody(ex);
+        String script = req.has("_script") ? req.get("_script").getAsString() : "";
+        if (!script.isEmpty()) PeripheralHud.clearIfOwner(script);
+        else PeripheralHud.clearElements();
         send(ex, 200, "{\"ok\":true}");
     }
 

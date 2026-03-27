@@ -39,52 +39,65 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class PeripheralHud {
 
-    // CopyOnWriteArrayList: safe to read from the render thread while HTTP thread writes
+    // CopyOnWriteArrayList: safe to read from the render thread while HTTP thread writes.
+    // Each element stores an "_owner" property (script name) so multiple scripts can
+    // coexist — stopping one only removes its own elements.
     private static final CopyOnWriteArrayList<JsonObject> elements = new CopyOnWriteArrayList<>();
-    // Script that last called hud_set — cleared automatically when it stops
-    private static volatile String ownerScript = "";
 
     // ── Public API (called from HTTP handlers) ────────────────────────────────
 
+    /** Replace all elements owned by scriptName with the new list. Other scripts' elements are untouched. */
     public static void setElements(List<JsonObject> elems, String scriptName) {
-        elements.clear();
-        elements.addAll(elems);
-        ownerScript = scriptName != null ? scriptName : "";
-    }
-
-    /** Called when a script stops — clears the HUD only if this script owns it. */
-    public static void clearIfOwner(String scriptName) {
-        if (scriptName != null && scriptName.equals(ownerScript)) {
-            elements.clear();
-            ownerScript = "";
+        String owner = scriptName != null ? scriptName : "";
+        // Remove this script's existing elements
+        elements.removeIf(e -> owner.equals(getOwner(e)));
+        // Add new elements tagged with this script
+        for (JsonObject el : elems) {
+            JsonObject copy = el.deepCopy();
+            if (!owner.isEmpty()) copy.addProperty("_owner", owner);
+            elements.add(copy);
         }
     }
 
+    /** Remove only the elements owned by scriptName. Called when a script stops. */
+    public static void clearIfOwner(String scriptName) {
+        if (scriptName != null && !scriptName.isEmpty()) {
+            elements.removeIf(e -> scriptName.equals(getOwner(e)));
+        }
+    }
+
+    /** Update a single element by id (searches across all scripts' elements). */
     public static void updateElement(String id, JsonObject updates) {
         for (int i = 0; i < elements.size(); i++) {
             JsonObject el = elements.get(i);
             if (el.has("id") && el.get("id").getAsString().equals(id)) {
                 JsonObject merged = el.deepCopy();
-                updates.entrySet().forEach(e -> merged.add(e.getKey(), e.getValue()));
+                updates.entrySet().forEach(e -> {
+                    if (!e.getKey().equals("_owner")) merged.add(e.getKey(), e.getValue());
+                });
                 elements.set(i, merged);
                 return;
             }
         }
-        // id not found — add as new element
+        // id not found — add as new element (owner unknown, will never be auto-cleared)
         JsonObject copy = updates.deepCopy();
         copy.addProperty("id", id);
         elements.add(copy);
     }
 
+    /** Clear all elements from all scripts (used by the UI "Clear HUD" button). */
     public static void clearElements() {
         elements.clear();
-        ownerScript = "";
     }
 
     public static JsonArray getElementsJson() {
         JsonArray arr = new JsonArray();
         elements.forEach(arr::add);
         return arr;
+    }
+
+    private static String getOwner(JsonObject el) {
+        return el.has("_owner") ? el.get("_owner").getAsString() : "";
     }
 
     // ── Registration ──────────────────────────────────────────────────────────
