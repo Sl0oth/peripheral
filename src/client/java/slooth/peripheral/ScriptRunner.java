@@ -146,7 +146,8 @@ public class ScriptRunner {
             "    os.mkdir = os.makedirs = _no_write('mkdir')",
             "    os.rmdir = _no_write('rmdir')",
             "",
-            "_PORT = int(os.environ.get('PERIPHERAL_STATE_PORT', 25585))",
+            "_PORT        = int(os.environ.get('PERIPHERAL_STATE_PORT', 25585))",
+            "_SCRIPT_NAME = os.environ.get('PERIPHERAL_SCRIPT_NAME', '')",
             "",
             "def _get(path):",
             "    with urllib.request.urlopen(f'http://localhost:{_PORT}{path}', timeout=5) as r:",
@@ -483,7 +484,7 @@ public class ScriptRunner {
             "    Colors: 'red' 'green' 'yellow' 'blue' 'white' 'grey' 'orange' 'purple'",
             "            or hex '#RRGGBB' / '#AARRGGBB'",
             "    \"\"\"",
-            "    _post('/hud/set', {'elements': elements})",
+            "    _post('/hud/set', {'elements': elements, '_script': _SCRIPT_NAME})",
             "",
             "def hud_update(element_id, **props):",
             "    \"\"\"Update a single HUD element by id. Same keyword args as hud_set elements.",
@@ -1697,6 +1698,7 @@ public class ScriptRunner {
             pb.environment().put("PERIPHERAL_AGENT_URL",   PeripheralConfig.agentUrl);
             pb.environment().put("PERIPHERAL_SCRIPTS_DIR", SCRIPTS_DIR.toAbsolutePath().toString());
             pb.environment().put("PERIPHERAL_FILE_ACCESS",  PeripheralConfig.getFileAccess(filename) ? "1" : "0");
+            pb.environment().put("PERIPHERAL_SCRIPT_NAME",  filename);
             pb.environment().put("PYTHONUNBUFFERED",        "1");
             // PYTHONPATH: always includes the scripts root so mc.py is importable from subfolders
             pb.environment().put("PYTHONPATH",              SCRIPTS_DIR.toAbsolutePath().toString());
@@ -1729,7 +1731,11 @@ public class ScriptRunner {
                         PeripheralStateTracker.pushLog(null, null, "[" + label + "] " + line, -1);
                     }
                 } catch (Exception ignored) {}
-                finally { running.remove(filename); startTimes.remove(filename); }
+                finally {
+                    running.remove(filename);
+                    startTimes.remove(filename);
+                    PeripheralHud.clearIfOwner(filename);
+                }
             }, "peripheral-read-" + filename);
             reader.setDaemon(true);
             reader.start();

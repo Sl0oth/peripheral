@@ -41,12 +41,23 @@ public class PeripheralHud {
 
     // CopyOnWriteArrayList: safe to read from the render thread while HTTP thread writes
     private static final CopyOnWriteArrayList<JsonObject> elements = new CopyOnWriteArrayList<>();
+    // Script that last called hud_set — cleared automatically when it stops
+    private static volatile String ownerScript = "";
 
     // ── Public API (called from HTTP handlers) ────────────────────────────────
 
-    public static void setElements(List<JsonObject> elems) {
+    public static void setElements(List<JsonObject> elems, String scriptName) {
         elements.clear();
         elements.addAll(elems);
+        ownerScript = scriptName != null ? scriptName : "";
+    }
+
+    /** Called when a script stops — clears the HUD only if this script owns it. */
+    public static void clearIfOwner(String scriptName) {
+        if (scriptName != null && scriptName.equals(ownerScript)) {
+            elements.clear();
+            ownerScript = "";
+        }
     }
 
     public static void updateElement(String id, JsonObject updates) {
@@ -67,6 +78,7 @@ public class PeripheralHud {
 
     public static void clearElements() {
         elements.clear();
+        ownerScript = "";
     }
 
     public static JsonArray getElementsJson() {

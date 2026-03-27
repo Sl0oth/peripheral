@@ -301,6 +301,9 @@ public class PeripheralScreen extends Screen {
         folderBtn.active = !inExamples;
         add(newBtn);
         add(folderBtn);
+        add(btn("Clear HUD", px + W - 126, by, 60, 14, b -> {
+            PeripheralHud.clearElements();
+        }));
         add(btn("Reload",   px + W - 62, by, 58, 14, b -> refreshScripts()));
 
         rebuildScriptBtns();

@@ -734,7 +734,8 @@ public class PeripheralHttpServer {
         req.getAsJsonArray("elements").forEach(e -> {
             if (e.isJsonObject()) list.add(e.getAsJsonObject());
         });
-        PeripheralHud.setElements(list);
+        String script = req.has("_script") ? req.get("_script").getAsString() : "";
+        PeripheralHud.setElements(list, script);
         send(ex, 200, "{\"ok\":true}");
     }
 
