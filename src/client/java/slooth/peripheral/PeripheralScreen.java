@@ -2199,6 +2199,7 @@ public class PeripheralScreen extends Screen {
                         String rel = ScriptRunner.SCRIPTS_DIR.relativize(p).toString()
                             .replace(java.io.File.separatorChar, '/');
                         ScriptRunner.stopScript(rel);
+                        PeripheralHud.clearIfOwner(rel);
                         BuildSession.deleteChatFor(rel);
                     });
                 Files.walk(target)
@@ -2207,6 +2208,7 @@ public class PeripheralScreen extends Screen {
             } catch (Exception ignored) {}
         } else {
             ScriptRunner.stopScript(relPath);
+            PeripheralHud.clearIfOwner(relPath);
             BuildSession.deleteChatFor(relPath);
             try { Files.deleteIfExists(target); } catch (Exception ignored) {}
             try { Files.deleteIfExists(ScriptRunner.SCRIPTS_DIR.resolve(relPath + ".log")); }
