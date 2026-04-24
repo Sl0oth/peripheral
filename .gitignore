@@ -44,7 +44,6 @@ config/peripheral.json
 
 # peripheral — publishing/platform docs (not part of source)
 MODRINTH_DESCRIPTION.md
-CHANGELOG.md
 TODO.md
 
 # peripheral — store server (sensitive backend)
