@@ -97,17 +97,22 @@ public class ScriptableScreen extends Screen {
         sTitle = str(layout, "title", "Script GUI");
         sW     = num(layout, "w",     300);
         sH     = num(layout, "h",     200);
-        widgetOrder.clear();
-        widgetMap.clear();
-        events.clear();
-        if (layout.has("widgets")) {
-            for (JsonElement el : layout.getAsJsonArray("widgets")) {
-                if (!el.isJsonObject()) continue;
-                JsonObject w = el.getAsJsonObject().deepCopy();
-                String id = str(w, "id", "");
-                if (!id.isEmpty()) {
-                    widgetOrder.add(id);
-                    widgetMap.put(id, w);
+        // Hold widgetOrder's lock for the entire clear+repopulate so the render
+        // thread (which also synchronizes on widgetOrder in render() and init())
+        // never sees a partially rebuilt widget list.
+        synchronized (widgetOrder) {
+            widgetOrder.clear();
+            widgetMap.clear();
+            events.clear();
+            if (layout.has("widgets")) {
+                for (JsonElement el : layout.getAsJsonArray("widgets")) {
+                    if (!el.isJsonObject()) continue;
+                    JsonObject w = el.getAsJsonObject().deepCopy();
+                    String id = str(w, "id", "");
+                    if (!id.isEmpty()) {
+                        widgetOrder.add(id);
+                        widgetMap.put(id, w);
+                    }
                 }
             }
         }
@@ -117,10 +122,16 @@ public class ScriptableScreen extends Screen {
 
     /** Update one widget's properties while the screen is open. Any thread. */
     public static void update(String id, JsonObject props) {
-        JsonObject w = widgetMap.get(id);
-        if (w == null) return;
+        JsonObject existing = widgetMap.get(id);
+        if (existing == null) return;
+        // Build a new object from a snapshot of the existing fields, then apply
+        // updates, then replace the map entry atomically via put(). The render
+        // thread will see either the old complete object or the new complete
+        // object — never a partially mutated one.
+        JsonObject updated = existing.deepCopy();
         for (Map.Entry<String, JsonElement> e : props.entrySet())
-            w.add(e.getKey(), e.getValue());
+            updated.add(e.getKey(), e.getValue());
+        widgetMap.put(id, updated);
     }
 
     /** Pop the next button-click event ID, or null if none pending. */

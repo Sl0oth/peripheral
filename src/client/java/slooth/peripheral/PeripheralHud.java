@@ -79,10 +79,11 @@ public class PeripheralHud {
                 return;
             }
         }
-        // id not found — add as new element (owner unknown, will never be auto-cleared)
-        JsonObject copy = updates.deepCopy();
-        copy.addProperty("id", id);
-        elements.add(copy);
+        // id not found — log a warning and do nothing.
+        // Creating an ownerless element here would mean it can never be auto-cleared
+        // when the script stops; only the manual "Clear HUD" button would remove it.
+        PeripheralClient.LOGGER.warn(
+            "[Peripheral] hud_update called for unknown id '{}' — call hud_set first.", id);
     }
 
     /** Clear all elements from all scripts (used by the UI "Clear HUD" button). */

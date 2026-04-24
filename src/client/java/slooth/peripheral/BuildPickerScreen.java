@@ -1,7 +1,6 @@
 package slooth.peripheral;
 
 import com.google.gson.JsonParser;
-import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -178,8 +177,8 @@ public class BuildPickerScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(Click click, boolean focused) {
-        double mx = click.x(), my = click.y();
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        double mx = mouseX, my = mouseY;
 
         // ── Delete confirmation dialog ────────────────────────────────────────
         if (deleteConfirmName != null) {
@@ -188,7 +187,7 @@ public class BuildPickerScreen extends Screen {
             int cfmX = dlgX + 8,          cfmY = dlgY + DLG_H - 18, cfmW = 78, cfmH = 14;
             int cclX = dlgX + DLG_W - 80, cclY = cfmY,              cclW = 72, cclH = 14;
 
-            if (click.button() == 0) {
+            if (button == 0) {
                 if (mx >= cfmX && mx < cfmX + cfmW && my >= cfmY && my < cfmY + cfmH) {
                     confirmDelete();
                 } else {
@@ -200,7 +199,7 @@ public class BuildPickerScreen extends Screen {
         }
 
         // ── Del button on a row ───────────────────────────────────────────────
-        if (click.button() == 0) {
+        if (button == 0) {
             for (int i = 0; i < sessions.size(); i++) {
                 if (inDelBtn(i, mx, my)) {
                     deleteConfirmName = sessions.get(i);
@@ -212,7 +211,7 @@ public class BuildPickerScreen extends Screen {
             if (row >= 0) { pickSession(row); return true; }
         }
 
-        return super.mouseClicked(click, focused);
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     private int rowAt(int my) {

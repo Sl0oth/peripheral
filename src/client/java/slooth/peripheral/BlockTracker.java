@@ -19,7 +19,8 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Tracks blocks placed by the player so scripts can avoid breaking them.
@@ -31,6 +32,18 @@ public class BlockTracker {
     private static final List<JsonObject>    unrestrictedZones = Collections.synchronizedList(new ArrayList<>());
     private static final Path  SAVE_PATH = Paths.get("config", "peripheral_blocks.json");
     private static final Gson  GSON      = new GsonBuilder().setPrettyPrinting().create();
+
+    // Single background thread for debounced saves.  Each block event cancels the
+    // previous pending save and reschedules it 500 ms out, so a rapid burst of
+    // break/place events produces exactly one disk write after the burst ends.
+    private static final ScheduledExecutorService SAVE_EXECUTOR =
+        Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "peripheral-block-save");
+            t.setDaemon(true);
+            return t;
+        });
+    private static final AtomicReference<ScheduledFuture<?>> pendingSave =
+        new AtomicReference<>();
 
     public static void register() {
         load();
@@ -122,9 +135,9 @@ public class BlockTracker {
     }
 
     private static void saveAsync() {
-        Thread t = new Thread(BlockTracker::save, "peripheral-block-save");
-        t.setDaemon(true);
-        t.start();
+        ScheduledFuture<?> prev = pendingSave.getAndSet(
+            SAVE_EXECUTOR.schedule(BlockTracker::save, 500, TimeUnit.MILLISECONDS));
+        if (prev != null) prev.cancel(false);
     }
 
     private static synchronized void save() {

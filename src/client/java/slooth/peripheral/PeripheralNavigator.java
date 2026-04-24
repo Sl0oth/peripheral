@@ -190,12 +190,16 @@ public class PeripheralNavigator {
         return isSolid(c, x, y - 1, z) && !isSolid(c, x, y, z) && !isSolid(c, x, y + 1, z);
     }
 
+    // Bit layout (62 bits total, sign bit always 0):
+    //   bits  0-25  z + 30_000_000  (26 bits, covers ±30M)
+    //   bits 26-35  y + 64          (10 bits, covers -64 to +959)
+    //   bits 36-61  x + 30_000_000  (26 bits, covers ±30M)
     private static long enc(int x, int y, int z) {
-        return ((long)(x + 500_000) << 40) | ((long)(y + 1_000) << 20) | (long)(z + 500_000);
+        return ((long)(x + 30_000_000) << 36) | ((long)(y + 64) << 26) | (long)(z + 30_000_000);
     }
-    private static int decX(long k) { return (int)(k >> 40) - 500_000; }
-    private static int decY(long k) { return (int)((k >> 20) & 0xFFFFF) - 1_000; }
-    private static int decZ(long k) { return (int)(k & 0xFFFFF) - 500_000; }
+    private static int decX(long k) { return (int)(k >> 36) - 30_000_000; }
+    private static int decY(long k) { return (int)((k >> 26) & 0x3FF) - 64; }
+    private static int decZ(long k) { return (int)(k & 0x3FFFFFF) - 30_000_000; }
 
     private List<int[]> astar(MinecraftClient c, int sx, int sy, int sz, int gx, int gy, int gz, int maxNodes) {
         outer: for (int dy = 0; dy <= 3; dy++) for (int s : new int[]{0, dy, -dy})

@@ -11,6 +11,7 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.text.ClickEvent;
+import net.minecraft.text.HoverEvent;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -102,7 +103,7 @@ public class PeripheralHttpServer {
             server.createContext("/hud/update",    PeripheralHttpServer::handleHudUpdate);
             server.createContext("/hud/clear",     PeripheralHttpServer::handleHudClear);
             server.createContext("/hud",           PeripheralHttpServer::handleHudGet);
-            server.setExecutor(Executors.newFixedThreadPool(4));
+            server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
             server.start();
             PeripheralClient.LOGGER.info("[Peripheral] HTTP server on port {}", PORT);
         } catch (IOException e) {
@@ -138,8 +139,8 @@ public class PeripheralHttpServer {
         if (client.player == null) { send(ex, 503, err("not_in_game")); return; }
         ClientPlayerEntity player = client.player;
         com.google.gson.JsonArray slots = new com.google.gson.JsonArray();
-        for (int i = 0; i < player.getInventory().getMainStacks().size(); i++) {
-            JsonObject item = GameStateReader.itemStackToJson(player.getInventory().getMainStacks().get(i));
+        for (int i = 0; i < player.getInventory().main.size(); i++) {
+            JsonObject item = GameStateReader.itemStackToJson(player.getInventory().main.get(i));
             item.addProperty("slot", i);
             item.addProperty("slot_type", i < 9 ? "hotbar" : "main");
             slots.add(item);
@@ -155,7 +156,7 @@ public class PeripheralHttpServer {
         offhand.addProperty("slot", 40); offhand.addProperty("slot_type", "offhand");
         slots.add(offhand);
         JsonObject resp = new JsonObject();
-        resp.add("slots", slots); resp.addProperty("selected_slot", player.getInventory().getSelectedSlot());
+        resp.add("slots", slots); resp.addProperty("selected_slot", player.getInventory().selectedSlot);
         send(ex, 200, GSON.toJson(resp));
     }
 
@@ -333,14 +334,14 @@ public class PeripheralHttpServer {
         for (String ing : fRecipe.ingredients()) needed.merge(ing, 1, Integer::sum);
 
         java.util.Map<String, Integer> ingToSlot = new java.util.LinkedHashMap<>();
-        int invSize = client.player.getInventory().getMainStacks().size();
+        int invSize = client.player.getInventory().main.size();
         for (var entry : needed.entrySet()) {
             String keyword = entry.getKey(); int count = entry.getValue(); int found = 0;
             for (int i = 0; i < invSize; i++) {
-                String id = client.player.getInventory().getMainStacks().get(i).getItem().toString().replace("minecraft:","").toLowerCase();
+                String id = client.player.getInventory().main.get(i).getItem().toString().replace("minecraft:","").toLowerCase();
                 if (id.contains(keyword)) {
                     if (!ingToSlot.containsKey(keyword)) ingToSlot.put(keyword, i);
-                    found += client.player.getInventory().getMainStacks().get(i).getCount();
+                    found += client.player.getInventory().main.get(i).getCount();
                 }
             }
             if (found < count) {
@@ -488,7 +489,7 @@ public class PeripheralHttpServer {
                     }
                     case "swap_hands" -> {
                         ScreenHandler sh2 = client.player.currentScreenHandler;
-                        if (sh2 != null) client.interactionManager.clickSlot(sh2.syncId, 36 + client.player.getInventory().getSelectedSlot(), 40, SlotActionType.SWAP, client.player);
+                        if (sh2 != null) client.interactionManager.clickSlot(sh2.syncId, 36 + client.player.getInventory().selectedSlot, 40, SlotActionType.SWAP, client.player);
                         ok.set(true);
                     }
                     case "send_chat" -> {
@@ -498,7 +499,7 @@ public class PeripheralHttpServer {
                     }
                     case "send_command" -> {
                         // Run a command silently — no chat echo, no chat validator.
-                        // 1.21.11 API: executeWithPrefix → parseAndExecute; ChatCommandC2SPacket → CommandExecutionC2SPacket
+                        // 1.21.4 API: executeWithPrefix (renamed to parseAndExecute in 1.21.11)
                         String raw = req.has("message") ? req.get("message").getAsString() : "";
                         if (!raw.isEmpty()) {
                             String bare = raw.startsWith("/") ? raw.substring(1) : raw;
@@ -511,7 +512,7 @@ public class PeripheralHttpServer {
                                     net.minecraft.server.network.ServerPlayerEntity sp =
                                         srv.getPlayerManager().getPlayer(client.player.getUuid());
                                     if (sp != null) {
-                                        srv.getCommandManager().parseAndExecute(
+                                        srv.getCommandManager().executeWithPrefix(
                                             sp.getCommandSource(), "/" + finalBare);
                                     }
                                 });
@@ -575,8 +576,8 @@ public class PeripheralHttpServer {
                         String keyword = req.has("item") ? req.get("item").getAsString().toLowerCase().replace("minecraft:", "") : "";
                         if (keyword.isEmpty()) { errMsg.set("no_item_keyword"); break; }
                         var inv = client.player.getInventory();
-                        int sel = inv.getSelectedSlot();
-                        var stacks = inv.getMainStacks();
+                        int sel = inv.selectedSlot;
+                        var stacks = inv.main;
                         // Already in hand?
                         String heldId = stacks.get(sel).getItem().toString().toLowerCase().replace("minecraft:", "");
                         if (heldId.contains(keyword)) { ok.set(true); break; }
@@ -805,8 +806,8 @@ public class PeripheralHttpServer {
             out.append(Text.literal(url).styled(s -> s
                 .withColor(Formatting.AQUA)
                 .withUnderline(true)
-                .withClickEvent(new ClickEvent.OpenUrl(java.net.URI.create(url)))
-                .withHoverEvent(new net.minecraft.text.HoverEvent.ShowText(
+                .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url))
+                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
                     Text.literal("Open in browser")))));
             last = m.end();
         }
@@ -864,10 +865,10 @@ public class PeripheralHttpServer {
                        : ce.has("value") ? ce.get("value").getAsString() : "";
             try {
                 style = switch (action) {
-                    case "open_url"          -> style.withClickEvent(new ClickEvent.OpenUrl(java.net.URI.create(url)));
-                    case "run_command"       -> style.withClickEvent(new ClickEvent.RunCommand(cmd));
-                    case "suggest_command"   -> style.withClickEvent(new ClickEvent.SuggestCommand(cmd));
-                    case "copy_to_clipboard" -> style.withClickEvent(new ClickEvent.CopyToClipboard(
+                    case "open_url"          -> style.withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url));
+                    case "run_command"       -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd));
+                    case "suggest_command"   -> style.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, cmd));
+                    case "copy_to_clipboard" -> style.withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD,
                                                    ce.has("value") ? ce.get("value").getAsString() : cmd));
                     default -> style;
                 };
@@ -882,7 +883,7 @@ public class PeripheralHttpServer {
                 com.google.gson.JsonElement contents = he.has("contents") ? he.get("contents")
                                                      : he.has("value")    ? he.get("value") : null;
                 if (contents != null)
-                    style = style.withHoverEvent(new net.minecraft.text.HoverEvent.ShowText(
+                    style = style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
                         buildRichText(contents)));
             }
         }

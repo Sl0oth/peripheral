@@ -1,12 +1,9 @@
 package slooth.peripheral;
 
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.input.CharInput;
-import net.minecraft.client.input.KeyInput;
 import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
@@ -246,10 +243,10 @@ public class ScriptEditorScreen extends Screen {
     // ── Keyboard ──────────────────────────────────────────────────────────────
 
     @Override
-    public boolean keyPressed(KeyInput input) {
-        int     key      = input.getKeycode();
-        boolean shift    = input.hasShift();
-        boolean ctrl     = input.hasCtrl();
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        int     key      = keyCode;
+        boolean shift    = (modifiers & GLFW.GLFW_MOD_SHIFT)   != 0;
+        boolean ctrl     = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
 
         if (ctrl) {
             switch (key) {
@@ -342,26 +339,23 @@ public class ScriptEditorScreen extends Screen {
         }
 
         ensureCursorVisible();
-        return super.keyPressed(input);
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
-    public boolean charTyped(CharInput input) {
-        if (input.isValidChar()) {
-            char c = (char) input.codepoint();
-            if (c >= 32 && c != 127) {
-                saveUndo();
-                if (hasSelection()) deleteSelection();
-                lines.get(cursorLine).insert(cursorCol, c);
-                cursorCol++;
-                clearSelection();
-                modified  = true;
-                blinkTick = 0;
-                ensureCursorVisible();
-                return true;
-            }
+    public boolean charTyped(char chr, int modifiers) {
+        if (chr >= 32 && chr != 127) {
+            saveUndo();
+            if (hasSelection()) deleteSelection();
+            lines.get(cursorLine).insert(cursorCol, chr);
+            cursorCol++;
+            clearSelection();
+            modified  = true;
+            blinkTick = 0;
+            ensureCursorVisible();
+            return true;
         }
-        return super.charTyped(input);
+        return super.charTyped(chr, modifiers);
     }
 
     // ── Edit operations ───────────────────────────────────────────────────────
@@ -605,10 +599,9 @@ public class ScriptEditorScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(Click click, boolean focused) {
-        double mx = click.x(), my = click.y();
-        if (mx >= editorX && mx < px + W - 1 && my >= contentY && my < contentY + contentH) {
-            int[] pos  = mouseToDocPos(mx, my);
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (mouseX >= editorX && mouseX < px + W - 1 && mouseY >= contentY && mouseY < contentY + contentH) {
+            int[] pos  = mouseToDocPos(mouseX, mouseY);
             cursorLine = pos[0];
             cursorCol  = pos[1];
             // Set anchor at the click position (no selection yet)
@@ -619,25 +612,25 @@ public class ScriptEditorScreen extends Screen {
             ensureCursorVisible();
             return true;
         }
-        return super.mouseClicked(click, focused);
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
     @Override
-    public boolean mouseDragged(Click click, double dx, double dy) {
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
         if (dragging) {
-            int[] pos  = mouseToDocPos(click.x(), click.y());
+            int[] pos  = mouseToDocPos(mouseX, mouseY);
             cursorLine = pos[0];
             cursorCol  = pos[1];
             blinkTick  = 0;
             return true;
         }
-        return super.mouseDragged(click, dx, dy);
+        return super.mouseDragged(mouseX, mouseY, button, dx, dy);
     }
 
     @Override
-    public boolean mouseReleased(Click click) {
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
         dragging = false;
-        return super.mouseReleased(click);
+        return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override

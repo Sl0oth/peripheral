@@ -72,6 +72,7 @@ public class PeripheralConfig {
     public static void setScriptSlot(int slot, String filename) {
         if (filename == null || filename.isBlank()) scriptSlots.remove(slot);
         else scriptSlots.put(slot, filename);
+        save();
     }
 
     public static Map<Integer, String> getScriptSlots() {

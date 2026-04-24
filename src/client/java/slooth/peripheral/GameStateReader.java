@@ -76,8 +76,8 @@ public class GameStateReader {
 
         // ── Inventory ──────────────────────────────────────────────────────
         JsonArray inventory = new JsonArray();
-        for (int i = 0; i < player.getInventory().getMainStacks().size(); i++) {
-            ItemStack stack = player.getInventory().getMainStacks().get(i);
+        for (int i = 0; i < player.getInventory().main.size(); i++) {
+            ItemStack stack = player.getInventory().main.get(i);
             if (!stack.isEmpty()) {
                 JsonObject item = itemStackToJson(stack);
                 item.addProperty("slot", i);

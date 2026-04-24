@@ -75,12 +75,12 @@ public class PeripheralClient implements ClientModInitializer {
         // ── G → toggle Peripheral GUI ──────────────────────────────────────
         KeyBinding guiKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key.peripheral.open_gui", GLFW.GLFW_KEY_G,
-            net.minecraft.client.option.KeyBinding.Category.GAMEPLAY));
+            "key.categories.gameplay"));
 
         // ── H → open/close the scriptable script GUI (if a script has loaded one) ──
         KeyBinding scriptGuiKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key.peripheral.open_script_gui", GLFW.GLFW_KEY_H,
-            net.minecraft.client.option.KeyBinding.Category.GAMEPLAY));
+            "key.categories.gameplay"));
 
         // ── Script hotkeys 1-5 (unbound by default — set in Options > Controls) ──
         KeyBinding[] scriptKeys = new KeyBinding[5];
@@ -88,7 +88,7 @@ public class PeripheralClient implements ClientModInitializer {
             scriptKeys[i] = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.peripheral.script_" + (i + 1),
                 GLFW.GLFW_KEY_UNKNOWN,
-                net.minecraft.client.option.KeyBinding.Category.GAMEPLAY));
+                "key.categories.gameplay"));
         }
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -248,7 +248,7 @@ public class PeripheralClient implements ClientModInitializer {
                             MutableText confirm = Text.literal("§c[Peripheral] Delete §f" + path + " §c?  ")
                                 .append(Text.literal("§c§l[Confirm]")
                                     .styled(s -> s.withClickEvent(
-                                        new ClickEvent.RunCommand(
+                                        new ClickEvent(ClickEvent.Action.RUN_COMMAND,
                                             "/peripheral delete-confirm " + path))));
                             ctx.getSource().sendFeedback(confirm);
                         });
@@ -308,7 +308,7 @@ public class PeripheralClient implements ClientModInitializer {
 
         // ── Incoming chat → ChatLog (so scripts can read it) ──────────────────
         ClientReceiveMessageEvents.CHAT.register((message, signedMessage, sender, params, receptionTimestamp) -> {
-            String senderName = sender != null ? sender .name() : "";
+            String senderName = sender != null ? sender.getName() : "";
             ChatLog.add("chat", senderName, message.getString());
         });
 

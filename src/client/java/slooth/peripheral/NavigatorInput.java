@@ -2,7 +2,6 @@ package slooth.peripheral;
 
 import net.minecraft.client.input.Input;
 import net.minecraft.util.PlayerInput;
-import net.minecraft.util.math.Vec2f;
 
 /**
  * Wraps the player's keyboard Input so PeripheralNavigator can inject
@@ -10,8 +9,8 @@ import net.minecraft.util.math.Vec2f;
  * all keybinding logic stays alive. When overriding is false, control passes
  * back to the keyboard transparently.
  *
- * 1.21.11: Input.tick() takes no arguments; movement is expressed via
- * the PlayerInput record (playerInput field) and Vec2f movementVector.
+ * In 1.21.4, movement is expressed via the PlayerInput record (playerInput field).
+ * movementVector (Vec2f) was not added until 1.21.11.
  */
 public class NavigatorInput extends Input {
 
@@ -41,11 +40,8 @@ public class NavigatorInput extends Input {
                 false,            // sneak
                 true              // sprint
             );
-            // movementVector: x = strafe, y = forward
-            this.movementVector = new Vec2f(0f, navForward);
         } else {
-            this.playerInput    = original.playerInput;
-            this.movementVector = original.movementVector;
+            this.playerInput = original.playerInput;
         }
     }
 
