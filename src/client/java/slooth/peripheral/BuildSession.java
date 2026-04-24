@@ -51,29 +51,64 @@ public class BuildSession {
         "  nearby()      -> list of {type, x, y, z, distance, hostile, name}\n" +
         "  chat_log(n=20)-> list of {text, sender, type}\n\n" +
         "Actions:\n" +
-        "  say(text)               - public chat\n" +
-        "  msg(text)               - client-side only message\n" +
-        "  look(yaw, pitch)\n" +
-        "  use_item()\n" +
+        "  say(text)                    - public chat\n" +
+        "  msg(text)                    - client-side only message\n" +
+        "  look('north')                - face a direction: north/south/east/west/up/down\n" +
+        "  look(yaw, pitch)             - set exact rotation (yaw: 0=S 90=W 180=N 270=E; pitch: -90=up 90=down)\n" +
+        "  jump()                       - jump (works when on the ground)\n" +
+        "  sprint(on=True)              - toggle sprinting\n" +
+        "  sneak(on=True)               - toggle sneaking\n" +
+        "  move(forward, strafe=0, duration=0)  - move player (1.0=forward/-1.0=back; duration blocks until done)\n" +
+        "  attack()                     - left-click attack at crosshair\n" +
+        "  use_item()                   - right-click held item\n" +
         "  equip(item_id)\n" +
-        "  jump()  sprint(on)  sneak(on)\n" +
-        "  move(forward, strafe, duration)\n" +
-        "  click_block(x, y, z, face)\n" +
-        "  attack()\n" +
-        "  drop_item(slot)\n\n" +
+        "  mine(x, y, z)                - start breaking block\n" +
+        "  place(x, y, z, face='up')    - place/right-click block\n" +
+        "  drop(all=False)              - drop held item\n\n" +
         "HUD overlays (persist while script runs):\n" +
         "  hud_set(elements)       - set full HUD layout\n" +
         "  hud_update(id, **kwargs)- update one element\n" +
         "  Element types: label, bar, rect, divider, item\n" +
         "  Anchors: top_left, top_right, bottom_left, bottom_right, center\n\n" +
-        "Custom in-game GUI:\n" +
-        "  open_gui(layout)        - open screen (player presses H)\n" +
-        "  get_gui_state()         -> dict of widget values\n\n" +
-        "Navigation (requires Baritone):\n" +
-        "  goto(x, z)\n" +
-        "  baritone(command)\n" +
-        "  baritone_stop()\n" +
-        "  nav_status() -> dict\n\n" +
+        "Custom in-game GUI (native Minecraft screen, opens/closes with H):\n" +
+        "  open_gui(layout)              - open the screen with a widget layout\n" +
+        "  gui_update(id, **props)       - update a widget's properties while open\n" +
+        "  gui_close()                   - close the screen\n" +
+        "  gui_state()   -> {open, event, inputs}  — event = last clicked button id (or None)\n" +
+        "  gui_poll()    -> str | None             — pops last button click event\n" +
+        "  gui_input(id) -> str                    — current text of an input field\n" +
+        "  gui_is_open() -> bool\n\n" +
+        "  Layout format: {'title':'Title','w':300,'h':200,'widgets':[...]}\n" +
+        "  Widget fields: type (required), id (required), x, y (relative to content area)\n" +
+        "  Widget types:\n" +
+        "    label   : text, color\n" +
+        "    bar     : value (0.0-1.0), w, h, color, bg_color\n" +
+        "    button  : label, w, h    — click fires event with widget id\n" +
+        "    input   : w, h, placeholder, value — readable via gui_input(id)\n" +
+        "    divider : w, color\n" +
+        "    rect    : w, h, color\n" +
+        "  Colors: 'red' 'green' 'yellow' 'blue' 'white' 'grey' 'orange' 'purple'\n" +
+        "          or hex '#RRGGBB' / '#AARRGGBB'\n\n" +
+        "  Example GUI script:\n" +
+        "    open_gui({'title':'Stats','w':260,'h':100,'widgets':[\n" +
+        "      {'type':'label',  'id':'hp_lbl', 'x':0,  'y':0,  'text':'Health', 'color':'red'},\n" +
+        "      {'type':'bar',    'id':'hp_bar', 'x':52, 'y':2,  'w':155,'h':5, 'value':1.0, 'color':'red'},\n" +
+        "      {'type':'button', 'id':'close',  'x':0,  'y':20, 'w':60, 'h':14, 'label':'Close'},\n" +
+        "    ]})\n" +
+        "    while True:\n" +
+        "      if gui_poll() == 'close': gui_close(); break\n" +
+        "      gui_update('hp_bar', value=health()/20)\n" +
+        "      wait(0.5)\n\n" +
+        "Navigation:\n" +
+        "  goto(x, z)               - walk to coordinates using built-in pathfinder (no Baritone needed)\n" +
+        "  walk(blocks, direction)  - walk N blocks forward or in a direction\n" +
+        "  nav_status()             -> dict with status, baritone (bool), pos\n\n" +
+        "Baritone navigation (REQUIRES Baritone mod — modrinth.com/mod/baritone):\n" +
+        "  baritone(command)        - send any Baritone command\n" +
+        "  mine_auto(block, count)  - auto-mine a block type\n" +
+        "  baritone_goto(x, y, z)   - pathfind to exact coordinates\n" +
+        "  baritone_stop()          - stop Baritone\n" +
+        "  IMPORTANT: If Baritone is not installed these will fail. Prefer goto() for basic navigation.\n\n" +
         "HTTP:\n" +
         "  http_get(url)           -> parsed JSON\n" +
         "  http_post(url, data)    -> parsed JSON\n\n" +

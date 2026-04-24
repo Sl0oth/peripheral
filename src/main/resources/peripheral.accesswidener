@@ -1,8 +1,8 @@
-accessWidener   v2   named
+accessWidener   v2   official
 
-# PlayerInventory.selectedSlot – private in 1.21.11, needed for set_slot action
-accessible  field   net/minecraft/entity/player/PlayerInventory   selectedSlot   I
-mutable     field   net/minecraft/entity/player/PlayerInventory   selectedSlot   I
+# Inventory.selected – needed for set_slot action
+accessible  field   net/minecraft/world/entity/player/Inventory   selected   I
+mutable     field   net/minecraft/world/entity/player/Inventory   selected   I
 
-# Input.movementVector – protected in 1.21.11, needed for NavigatorInput to copy from original
-accessible  field   net/minecraft/client/input/Input   movementVector   Lnet/minecraft/util/math/Vec2f;
+# ClientInput.moveVector – needed for NavigatorInput to copy from original
+accessible  field   net/minecraft/client/player/ClientInput   moveVector   Lnet/minecraft/world/phys/Vec2;

@@ -1,19 +1,19 @@
 package slooth.peripheral;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.Click;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.input.CharInput;
-import net.minecraft.client.input.KeyInput;
-import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.ArrayList;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
 
 /**
  * In-game multi-line script editor.
@@ -97,7 +97,7 @@ public class ScriptEditorScreen extends Screen {
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public ScriptEditorScreen(Screen parent, String scriptName) {
-        super(Text.literal("Edit: " + scriptName));
+        super(Component.literal("Edit: " + scriptName));
         this.parent     = parent;
         this.scriptName = scriptName;
         this.scriptPath = ScriptRunner.SCRIPTS_DIR.resolve(
@@ -131,10 +131,10 @@ public class ScriptEditorScreen extends Screen {
         editorX  = px + 1 + GUTTER;
         editorW  = W - 2 - GUTTER;
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("← Back"), b -> close())
-            .dimensions(px + 4, py + H - BH + 6, 48, 14).build());
-        addDrawableChild(ButtonWidget.builder(Text.literal("Save"), b -> saveFile())
-            .dimensions(px + W - 52, py + H - BH + 6, 48, 14).build());
+        addRenderableWidget(Button.builder(Component.literal("← Back"), b -> onClose())
+            .bounds(px + 4, py + H - BH + 6, 48, 14).build());
+        addRenderableWidget(Button.builder(Component.literal("Save"), b -> saveFile())
+            .bounds(px + W - 52, py + H - BH + 6, 48, 14).build());
     }
 
     // ── Tick ─────────────────────────────────────────────────────────────────
@@ -152,17 +152,17 @@ public class ScriptEditorScreen extends Screen {
     // ── Render ────────────────────────────────────────────────────────────────
 
     @Override
-    public void renderBackground(DrawContext ctx, int mouseX, int mouseY, float delta) {
+    public void extractBackground(GuiGraphicsExtractor ctx, int mouseX, int mouseY, float delta) {
         // Suppress blur — applyBlur() can only fire once per frame.
     }
 
     @Override
-    public void render(DrawContext ctx, int mx, int my, float delta) {
+    public void extractRenderState(GuiGraphicsExtractor ctx, int mx, int my, float delta) {
         ctx.fill(0, 0, width, height, 0x88000000);
         ctx.fill(px, py, px + W, py + H, C_PANEL);
         ctx.fill(px, py, px + W, py + TH, C_TITLE);
-        ctx.drawText(textRenderer,
-            Text.literal("§a■ §fEDIT  §7" + scriptName + (modified ? "  §e[modified]" : "")),
+        ctx.text(font,
+            Component.literal("§a■ §fEDIT  §7" + scriptName + (modified ? "  §e[modified]" : "")),
             px + 4, py + 3, C_GREEN, false);
 
         ctx.fill(px + 1, contentY, px + W - 1, contentY + contentH, C_CONTENT);
@@ -205,8 +205,8 @@ public class ScriptEditorScreen extends Screen {
 
             // Line number
             String lnStr = String.valueOf(i + 1);
-            int    lnX   = px + 1 + GUTTER - textRenderer.getWidth(lnStr) - 3;
-            ctx.drawText(textRenderer, Text.literal(lnStr), lnX, ty,
+            int    lnX   = px + 1 + GUTTER - font.width(lnStr) - 3;
+            ctx.text(font, Component.literal(lnStr), lnX, ty,
                 isCurLine ? C_GREEN : C_LINENO, false);
 
             // Line text
@@ -214,14 +214,14 @@ public class ScriptEditorScreen extends Screen {
                 String visible = dispLine.substring(scrollCol);
                 int maxC = editorW / 6 + 2;
                 if (visible.length() > maxC) visible = visible.substring(0, maxC);
-                ctx.drawText(textRenderer, Text.literal(visible), editorX + 2, ty, C_WHITE, false);
+                ctx.text(font, Component.literal(visible), editorX + 2, ty, C_WHITE, false);
             }
 
             // Blinking cursor
             if (isCurLine && (blinkTick / 10) % 2 == 0 && cursorCol >= scrollCol) {
                 int safeCol = Math.min(cursorCol, dispLine.length());
                 String bef  = dispLine.substring(scrollCol, safeCol);
-                int    cx   = editorX + 2 + textRenderer.getWidth(bef);
+                int    cx   = editorX + 2 + font.width(bef);
                 if (cx < px + W - 1)
                     ctx.fill(cx, ty - 1, cx + 1, ty + LINE_H - 1, C_CURSOR);
             }
@@ -229,27 +229,27 @@ public class ScriptEditorScreen extends Screen {
 
         // Bottom status strip
         if (statusTick > 0) {
-            ctx.drawText(textRenderer, Text.literal(statusMsg),
+            ctx.text(font, Component.literal(statusMsg),
                 px + 60, py + H - BH + 9,
                 statusMsg.startsWith("Error") ? C_RED : C_GREEN, false);
         } else {
             String selInfo = hasSel ? "  |  [sel]" : "";
-            ctx.drawText(textRenderer,
-                Text.literal("Ln " + (cursorLine + 1) + "  Col " + (cursorCol + 1) + selInfo
+            ctx.text(font,
+                Component.literal("Ln " + (cursorLine + 1) + "  Col " + (cursorCol + 1) + selInfo
                     + "  |  Ctrl+S  Ctrl+Z  Ctrl+A  Ctrl+C/X"),
                 px + 60, py + H - BH + 9, C_DIM, false);
         }
 
-        super.render(ctx, mx, my, delta);
+        super.extractRenderState(ctx, mx, my, delta);
     }
 
     // ── Keyboard ──────────────────────────────────────────────────────────────
 
     @Override
-    public boolean keyPressed(KeyInput input) {
-        int     key      = input.getKeycode();
-        boolean shift    = input.hasShift();
-        boolean ctrl     = input.hasCtrl();
+    public boolean keyPressed(KeyEvent input) {
+        int     key      = input.input();
+        boolean shift    = input.hasShiftDown();
+        boolean ctrl     = input.hasControlDown();
 
         if (ctrl) {
             switch (key) {
@@ -258,12 +258,12 @@ public class ScriptEditorScreen extends Screen {
                 case GLFW.GLFW_KEY_V -> { paste();    return true; }
                 case GLFW.GLFW_KEY_C -> {
                     if (hasSelection())
-                        MinecraftClient.getInstance().keyboard.setClipboard(getSelectedText());
+                        Minecraft.getInstance().keyboardHandler.setClipboard(getSelectedText());
                     return true;
                 }
                 case GLFW.GLFW_KEY_X -> {
                     if (hasSelection()) {
-                        MinecraftClient.getInstance().keyboard.setClipboard(getSelectedText());
+                        Minecraft.getInstance().keyboardHandler.setClipboard(getSelectedText());
                         saveUndo();
                         deleteSelection();
                     }
@@ -337,7 +337,7 @@ public class ScriptEditorScreen extends Screen {
             }
             case GLFW.GLFW_KEY_PAGE_UP   -> { pageMove(-visLines()); if (!shift) clearSelection(); return true; }
             case GLFW.GLFW_KEY_PAGE_DOWN -> { pageMove(+visLines()); if (!shift) clearSelection(); return true; }
-            case GLFW.GLFW_KEY_ESCAPE    -> { close(); return true; }
+            case GLFW.GLFW_KEY_ESCAPE    -> { onClose(); return true; }
             default -> {}
         }
 
@@ -346,8 +346,8 @@ public class ScriptEditorScreen extends Screen {
     }
 
     @Override
-    public boolean charTyped(CharInput input) {
-        if (input.isValidChar()) {
+    public boolean charTyped(CharacterEvent input) {
+        if (input.isAllowedChatCharacter()) {
             char c = (char) input.codepoint();
             if (c >= 32 && c != 127) {
                 saveUndo();
@@ -425,7 +425,7 @@ public class ScriptEditorScreen extends Screen {
     }
 
     private void paste() {
-        String clip = MinecraftClient.getInstance().keyboard.getClipboard();
+        String clip = Minecraft.getInstance().keyboardHandler.getClipboard();
         if (clip == null || clip.isEmpty()) return;
         saveUndo();
         if (hasSelection()) deleteSelection();
@@ -511,7 +511,7 @@ public class ScriptEditorScreen extends Screen {
         int sc  = Math.max(scrollCol, 0);
         int col = Math.max(dispCol, sc);
         col     = Math.min(col, dispLine.length());
-        return editorX + 2 + textRenderer.getWidth(dispLine.substring(sc, col));
+        return editorX + 2 + font.width(dispLine.substring(sc, col));
     }
 
     // ── Cursor movement ───────────────────────────────────────────────────────
@@ -573,7 +573,7 @@ public class ScriptEditorScreen extends Screen {
             int safeCol = Math.min(cursorCol, lineStr.length());
             if (scrollCol <= safeCol) {
                 String vis = lineStr.substring(scrollCol, safeCol);
-                while (textRenderer.getWidth(vis) > editorW - 12 && scrollCol < safeCol) {
+                while (font.width(vis) > editorW - 12 && scrollCol < safeCol) {
                     scrollCol++;
                     vis = lineStr.substring(scrollCol, safeCol);
                 }
@@ -598,14 +598,14 @@ public class ScriptEditorScreen extends Screen {
         int    relX = (int)(mx - editorX - 2);
         int    col  = scrollCol;
         for (int c = scrollCol; c <= raw.length(); c++) {
-            if (textRenderer.getWidth(raw.substring(scrollCol, c)) > relX) break;
+            if (font.width(raw.substring(scrollCol, c)) > relX) break;
             col = c;
         }
         return new int[]{ln, col};
     }
 
     @Override
-    public boolean mouseClicked(Click click, boolean focused) {
+    public boolean mouseClicked(MouseButtonEvent click, boolean focused) {
         double mx = click.x(), my = click.y();
         if (mx >= editorX && mx < px + W - 1 && my >= contentY && my < contentY + contentH) {
             int[] pos  = mouseToDocPos(mx, my);
@@ -623,7 +623,7 @@ public class ScriptEditorScreen extends Screen {
     }
 
     @Override
-    public boolean mouseDragged(Click click, double dx, double dy) {
+    public boolean mouseDragged(MouseButtonEvent click, double dx, double dy) {
         if (dragging) {
             int[] pos  = mouseToDocPos(click.x(), click.y());
             cursorLine = pos[0];
@@ -635,7 +635,7 @@ public class ScriptEditorScreen extends Screen {
     }
 
     @Override
-    public boolean mouseReleased(Click click) {
+    public boolean mouseReleased(MouseButtonEvent click) {
         dragging = false;
         return super.mouseReleased(click);
     }
@@ -694,10 +694,10 @@ public class ScriptEditorScreen extends Screen {
     // ── Screen overrides ──────────────────────────────────────────────────────
 
     @Override
-    public void close() {
-        MinecraftClient.getInstance().setScreen(parent);
+    public void onClose() {
+        Minecraft.getInstance().setScreen(parent);
     }
 
     @Override
-    public boolean shouldPause() { return false; }
+    public boolean isPauseScreen() { return false; }
 }

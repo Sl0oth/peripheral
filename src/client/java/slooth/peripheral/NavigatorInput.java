@@ -1,8 +1,8 @@
 package slooth.peripheral;
 
-import net.minecraft.client.input.Input;
-import net.minecraft.util.PlayerInput;
-import net.minecraft.util.math.Vec2f;
+import net.minecraft.client.player.ClientInput;
+import net.minecraft.world.entity.player.Input;
+import net.minecraft.world.phys.Vec2;
 
 /**
  * Wraps the player's keyboard Input so PeripheralNavigator can inject
@@ -13,15 +13,24 @@ import net.minecraft.util.math.Vec2f;
  * 1.21.11: Input.tick() takes no arguments; movement is expressed via
  * the PlayerInput record (playerInput field) and Vec2f movementVector.
  */
-public class NavigatorInput extends Input {
+public class NavigatorInput extends ClientInput {
 
-    private final Input original;
+    private final ClientInput original;
 
+    // Navigator (pathfinder) overrides
     volatile float   navForward = 0f;
     volatile boolean navJump    = false;
     volatile boolean overriding = false;
 
-    public NavigatorInput(Input original) {
+    // Script action overrides (jump/sprint/sneak/move)
+    volatile float   scriptForward   = 0f;
+    volatile float   scriptStrafe    = 0f;
+    volatile boolean scriptSprint    = false;
+    volatile boolean scriptSneak     = false;
+    volatile boolean scriptJump      = false;   // consumed after one tick
+    volatile boolean scriptOverriding = false;
+
+    public NavigatorInput(ClientInput original) {
         this.original = original;
     }
 
@@ -30,9 +39,8 @@ public class NavigatorInput extends Input {
         original.tick();
 
         if (overriding) {
-            // Build a PlayerInput that walks forward (and optionally jumps).
-            // Fields: forward, backward, left, right, jump, sneak, sprint
-            this.playerInput = new PlayerInput(
+            // Navigator takes full control
+            this.keyPresses = new Input(
                 navForward > 0,   // forward
                 false,            // backward
                 false,            // left
@@ -41,13 +49,22 @@ public class NavigatorInput extends Input {
                 false,            // sneak
                 true              // sprint
             );
-            // movementVector: x = strafe, y = forward
-            this.movementVector = new Vec2f(0f, navForward);
+            this.moveVector = new Vec2(0f, navForward);
+        } else if (scriptOverriding) {
+            // Script action overrides keyboard
+            boolean fwd  = scriptForward > 0;
+            boolean back = scriptForward < 0;
+            boolean right = scriptStrafe > 0;
+            boolean left  = scriptStrafe < 0;
+            boolean jump  = scriptJump;
+            scriptJump = false;  // consume jump after one tick
+            this.keyPresses = new Input(fwd, back, left, right, jump, scriptSneak, scriptSprint);
+            this.moveVector = new Vec2(scriptStrafe, scriptForward);
         } else {
-            this.playerInput    = original.playerInput;
-            this.movementVector = original.movementVector;
+            this.keyPresses = original.keyPresses;
+            this.moveVector = original.moveVector;
         }
     }
 
-    public Input getOriginal() { return original; }
+    public ClientInput getOriginal() { return original; }
 }

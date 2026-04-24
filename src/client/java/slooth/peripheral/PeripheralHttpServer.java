@@ -5,22 +5,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-
 import java.io.*;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -28,6 +12,21 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Embedded HTTP server that exposes Minecraft's game state and accepts actions
@@ -98,6 +97,8 @@ public class PeripheralHttpServer {
             server.createContext("/run_script",    PeripheralHttpServer::handleRunScript);
             server.createContext("/script_status", PeripheralHttpServer::handleScriptStatus);
             server.createContext("/gui",           PeripheralHttpServer::handleGui);
+            server.createContext("/block",         PeripheralHttpServer::handleBlock);
+            server.createContext("/target",        PeripheralHttpServer::handleTarget);
             server.createContext("/hud/set",       PeripheralHttpServer::handleHudSet);
             server.createContext("/hud/update",    PeripheralHttpServer::handleHudUpdate);
             server.createContext("/hud/clear",     PeripheralHttpServer::handleHudClear);
@@ -123,9 +124,9 @@ public class PeripheralHttpServer {
         String message = req.has("message") ? req.get("message").getAsString() : "";
         if (message.isEmpty()) { send(ex, 400, err("empty_message")); return; }
         if (message.startsWith("/")) { send(ex, 403, err("commands_not_allowed")); return; }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client.player == null) { send(ex, 503, err("not_in_game")); return; }
-        client.execute(() -> client.player.networkHandler.sendChatMessage(message));
+        client.execute(() -> client.player.connection.sendChat(message));
         JsonObject resp = new JsonObject();
         resp.addProperty("ok", true); resp.addProperty("sent", message);
         send(ex, 200, GSON.toJson(resp));
@@ -134,12 +135,12 @@ public class PeripheralHttpServer {
     // ── GET /inventory ────────────────────────────────────────────────────────
     private static void handleInventory(HttpExchange ex) throws IOException {
         if (!ex.getRequestMethod().equals("GET")) { send(ex, 405, err("method_not_allowed")); return; }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client.player == null) { send(ex, 503, err("not_in_game")); return; }
-        ClientPlayerEntity player = client.player;
+        LocalPlayer player = client.player;
         com.google.gson.JsonArray slots = new com.google.gson.JsonArray();
-        for (int i = 0; i < player.getInventory().getMainStacks().size(); i++) {
-            JsonObject item = GameStateReader.itemStackToJson(player.getInventory().getMainStacks().get(i));
+        for (int i = 0; i < player.getInventory().getNonEquipmentItems().size(); i++) {
+            JsonObject item = GameStateReader.itemStackToJson(player.getInventory().getNonEquipmentItems().get(i));
             item.addProperty("slot", i);
             item.addProperty("slot_type", i < 9 ? "hotbar" : "main");
             slots.add(item);
@@ -147,11 +148,11 @@ public class PeripheralHttpServer {
         String[] armourNames = {"feet", "legs", "chest", "head"};
         EquipmentSlot[] armorSlots = {EquipmentSlot.FEET, EquipmentSlot.LEGS, EquipmentSlot.CHEST, EquipmentSlot.HEAD};
         for (int i = 0; i < armorSlots.length; i++) {
-            JsonObject item = GameStateReader.itemStackToJson(player.getEquippedStack(armorSlots[i]));
+            JsonObject item = GameStateReader.itemStackToJson(player.getItemBySlot(armorSlots[i]));
             item.addProperty("slot", 100 + i); item.addProperty("slot_type", "armor_" + armourNames[i]);
             slots.add(item);
         }
-        JsonObject offhand = GameStateReader.itemStackToJson(player.getOffHandStack());
+        JsonObject offhand = GameStateReader.itemStackToJson(player.getOffhandItem());
         offhand.addProperty("slot", 40); offhand.addProperty("slot_type", "offhand");
         slots.add(offhand);
         JsonObject resp = new JsonObject();
@@ -312,7 +313,7 @@ public class PeripheralHttpServer {
 
     private static void handleCraft(HttpExchange ex) throws IOException {
         if (!ex.getRequestMethod().equals("POST")) { send(ex, 405, err("method_not_allowed")); return; }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client.player == null) { send(ex, 503, err("not_in_game")); return; }
 
         JsonObject req   = parseBody(ex);
@@ -333,14 +334,14 @@ public class PeripheralHttpServer {
         for (String ing : fRecipe.ingredients()) needed.merge(ing, 1, Integer::sum);
 
         java.util.Map<String, Integer> ingToSlot = new java.util.LinkedHashMap<>();
-        int invSize = client.player.getInventory().getMainStacks().size();
+        int invSize = client.player.getInventory().getNonEquipmentItems().size();
         for (var entry : needed.entrySet()) {
             String keyword = entry.getKey(); int count = entry.getValue(); int found = 0;
             for (int i = 0; i < invSize; i++) {
-                String id = client.player.getInventory().getMainStacks().get(i).getItem().toString().replace("minecraft:","").toLowerCase();
+                String id = client.player.getInventory().getNonEquipmentItems().get(i).getItem().toString().replace("minecraft:","").toLowerCase();
                 if (id.contains(keyword)) {
                     if (!ingToSlot.containsKey(keyword)) ingToSlot.put(keyword, i);
-                    found += client.player.getInventory().getMainStacks().get(i).getCount();
+                    found += client.player.getInventory().getNonEquipmentItems().get(i).getCount();
                 }
             }
             if (found < count) {
@@ -350,7 +351,7 @@ public class PeripheralHttpServer {
         }
 
         if (fRecipe.needsTable()) {
-            boolean alreadyOpen = client.currentScreen != null;
+            boolean alreadyOpen = client.screen != null;
             if (!alreadyOpen) {
                 BlockPos tablePos = findNearby(client, "crafting_table", 6);
                 if (tablePos == null) { send(ex, 200, "{\"success\":false,\"error\":\"no_crafting_table_nearby\"}"); return; }
@@ -358,15 +359,15 @@ public class PeripheralHttpServer {
                 final BlockPos fPos = tablePos;
                 client.execute(() -> {
                     try {
-                        lookAt(client.player, Vec3d.ofCenter(fPos));
-                        client.interactionManager.interactBlock(client.player, Hand.MAIN_HAND,
-                            new BlockHitResult(Vec3d.ofCenter(fPos), Direction.UP, fPos, false));
+                        lookAt(client.player, Vec3.atCenterOf(fPos));
+                        client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND,
+                            new BlockHitResult(Vec3.atCenterOf(fPos), Direction.UP, fPos, false));
                     } catch (Exception ignored) { } finally { openLatch.countDown(); }
                 });
                 try { openLatch.await(2, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
                 sleep(700);
             }
-            if (client.currentScreen == null) { send(ex, 200, "{\"success\":false,\"error\":\"crafting_table_did_not_open\"}"); return; }
+            if (client.screen == null) { send(ex, 200, "{\"success\":false,\"error\":\"crafting_table_did_not_open\"}"); return; }
         }
 
         java.util.Map<String, java.util.List<Integer>> keywordToGridSlots = new java.util.LinkedHashMap<>();
@@ -378,17 +379,17 @@ public class PeripheralHttpServer {
         CountDownLatch clickLatch = new CountDownLatch(1);
         client.execute(() -> {
             try {
-                ScreenHandler sh = client.player.currentScreenHandler;
+                AbstractContainerMenu sh = client.player.containerMenu;
                 if (sh == null) { craftErr.set("no_screen_handler"); return; }
-                int syncId = sh.syncId;
+                int syncId = sh.containerId;
                 for (var kv : keywordToGridSlots.entrySet()) {
                     int mainIdx = ingToSlot.getOrDefault(kv.getKey(), -1);
                     if (mainIdx < 0) { craftErr.set("ingredient_not_found:" + kv.getKey()); return; }
                     int containerSlot = mainIdxToContainerSlot(mainIdx, fRecipe.needsTable());
-                    client.interactionManager.clickSlot(syncId, containerSlot, 0, SlotActionType.PICKUP, client.player);
+                    client.gameMode.handleContainerInput(syncId, containerSlot, 0, ContainerInput.PICKUP, client.player);
                     for (int gs : kv.getValue())
-                        client.interactionManager.clickSlot(syncId, gs, 1, SlotActionType.PICKUP, client.player);
-                    client.interactionManager.clickSlot(syncId, containerSlot, 0, SlotActionType.PICKUP, client.player);
+                        client.gameMode.handleContainerInput(syncId, gs, 1, ContainerInput.PICKUP, client.player);
+                    client.gameMode.handleContainerInput(syncId, containerSlot, 0, ContainerInput.PICKUP, client.player);
                 }
                 craftOk.set(true);
             } catch (Exception e) { craftErr.set(e.getMessage()); } finally { clickLatch.countDown(); }
@@ -401,8 +402,8 @@ public class PeripheralHttpServer {
         AtomicBoolean  tookResult  = new AtomicBoolean(false);
         client.execute(() -> {
             try {
-                ScreenHandler sh = client.player.currentScreenHandler;
-                if (sh != null) { client.interactionManager.clickSlot(sh.syncId, 0, 0, SlotActionType.QUICK_MOVE, client.player); tookResult.set(true); }
+                AbstractContainerMenu sh = client.player.containerMenu;
+                if (sh != null) { client.gameMode.handleContainerInput(sh.containerId, 0, 0, ContainerInput.QUICK_MOVE, client.player); tookResult.set(true); }
             } finally { resultLatch.countDown(); }
         });
         try { resultLatch.await(2, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
@@ -410,7 +411,7 @@ public class PeripheralHttpServer {
 
         if (fRecipe.needsTable()) {
             CountDownLatch closeLatch = new CountDownLatch(1);
-            client.execute(() -> { try { if (client.currentScreen != null) client.player.closeHandledScreen(); } finally { closeLatch.countDown(); } });
+            client.execute(() -> { try { if (client.screen != null) client.player.closeContainer(); } finally { closeLatch.countDown(); } });
             try { closeLatch.await(1, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
         }
         send(ex, 200, tookResult.get() ? "{\"success\":true}" : "{\"success\":false,\"error\":\"no_result_in_slot\"}");
@@ -423,7 +424,7 @@ public class PeripheralHttpServer {
     // ── POST /action ──────────────────────────────────────────────────────────
     private static void handleAction(HttpExchange ex) throws IOException {
         if (!ex.getRequestMethod().equals("POST")) { send(ex, 405, err("method_not_allowed")); return; }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client.player == null) { send(ex, 503, err("not_in_game")); return; }
 
         JsonObject req  = parseBody(ex);
@@ -438,12 +439,12 @@ public class PeripheralHttpServer {
                 switch (type) {
                     case "set_slot" -> {
                         int slot = Math.max(0, Math.min(8, req.has("slot") ? req.get("slot").getAsInt() : 0));
-                        client.player.getInventory().selectedSlot = slot;
-                        client.player.networkHandler.sendPacket(new net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket(slot));
+                        client.player.getInventory().selected = slot;
+                        client.player.connection.send(new net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket(slot));
                         ok.set(true);
                     }
                     case "look_at" -> {
-                        lookAt(client.player, new Vec3d(
+                        lookAt(client.player, new Vec3(
                             req.has("x") ? req.get("x").getAsDouble() : 0,
                             req.has("y") ? req.get("y").getAsDouble() : 64,
                             req.has("z") ? req.get("z").getAsDouble() : 0));
@@ -452,48 +453,48 @@ public class PeripheralHttpServer {
                     case "use_block", "place_block" -> {
                         BlockPos  bpos = new BlockPos(req.has("x") ? req.get("x").getAsInt() : 0, req.has("y") ? req.get("y").getAsInt() : 64, req.has("z") ? req.get("z").getAsInt() : 0);
                         Direction face = dirFrom(req.has("face") ? req.get("face").getAsString() : "up");
-                        Vec3d hit = Vec3d.ofCenter(bpos).add(face.getOffsetX() * .5, face.getOffsetY() * .5, face.getOffsetZ() * .5);
-                        lookAt(client.player, Vec3d.ofCenter(bpos));
-                        client.interactionManager.interactBlock(client.player, Hand.MAIN_HAND, new BlockHitResult(hit, face, bpos, false));
+                        Vec3 hit = Vec3.atCenterOf(bpos).add(face.getStepX() * .5, face.getStepY() * .5, face.getStepZ() * .5);
+                        lookAt(client.player, Vec3.atCenterOf(bpos));
+                        client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND, new BlockHitResult(hit, face, bpos, false));
                         ok.set(true);
                     }
                     case "start_break" -> {
                         BlockPos bpos = new BlockPos(req.has("x") ? req.get("x").getAsInt() : 0, req.has("y") ? req.get("y").getAsInt() : 64, req.has("z") ? req.get("z").getAsInt() : 0);
-                        lookAt(client.player, Vec3d.ofCenter(bpos));
-                        client.interactionManager.attackBlock(bpos, Direction.UP);
+                        lookAt(client.player, Vec3.atCenterOf(bpos));
+                        client.gameMode.startDestroyBlock(bpos, Direction.UP);
                         ok.set(true);
                     }
                     case "stop_break" -> ok.set(true);
                     case "click_slot" -> {
-                        ScreenHandler sh = client.player.currentScreenHandler;
+                        AbstractContainerMenu sh = client.player.containerMenu;
                         if (sh == null) { errMsg.set("no_screen_open"); break; }
-                        SlotActionType sat = switch (req.has("mode") ? req.get("mode").getAsString().toLowerCase() : "") {
-                            case "shift" -> SlotActionType.QUICK_MOVE;
-                            case "drop"  -> SlotActionType.THROW;
-                            case "clone" -> SlotActionType.CLONE;
-                            default      -> SlotActionType.PICKUP;
+                        ContainerInput sat = switch (req.has("mode") ? req.get("mode").getAsString().toLowerCase() : "") {
+                            case "shift" -> ContainerInput.QUICK_MOVE;
+                            case "drop"  -> ContainerInput.THROW;
+                            case "clone" -> ContainerInput.CLONE;
+                            default      -> ContainerInput.PICKUP;
                         };
-                        client.interactionManager.clickSlot(sh.syncId, req.has("slot") ? req.get("slot").getAsInt() : 0, req.has("button") ? req.get("button").getAsInt() : 0, sat, client.player);
+                        client.gameMode.handleContainerInput(sh.containerId, req.has("slot") ? req.get("slot").getAsInt() : 0, req.has("button") ? req.get("button").getAsInt() : 0, sat, client.player);
                         ok.set(true);
                     }
-                    case "close_container" -> { if (client.currentScreen != null) client.player.closeHandledScreen(); ok.set(true); }
+                    case "close_container" -> { if (client.screen != null) client.player.closeContainer(); ok.set(true); }
                     case "drop_item"       -> {
                         boolean dropAll = req.has("all") && req.get("all").getAsBoolean();
-                        net.minecraft.item.ItemStack held = client.player.getMainHandStack();
+                        net.minecraft.world.item.ItemStack held = client.player.getMainHandItem();
                         if (!held.isEmpty()) {
-                            net.minecraft.item.ItemStack toDrop = held.split(dropAll ? held.getCount() : 1);
-                            if (!toDrop.isEmpty()) client.player.dropItem(toDrop, false);
+                            net.minecraft.world.item.ItemStack toDrop = held.split(dropAll ? held.getCount() : 1);
+                            if (!toDrop.isEmpty()) client.player.drop(toDrop, false);
                         }
                         ok.set(true);
                     }
                     case "swap_hands" -> {
-                        ScreenHandler sh2 = client.player.currentScreenHandler;
-                        if (sh2 != null) client.interactionManager.clickSlot(sh2.syncId, 36 + client.player.getInventory().getSelectedSlot(), 40, SlotActionType.SWAP, client.player);
+                        AbstractContainerMenu sh2 = client.player.containerMenu;
+                        if (sh2 != null) client.gameMode.handleContainerInput(sh2.containerId, 36 + client.player.getInventory().getSelectedSlot(), 40, ContainerInput.SWAP, client.player);
                         ok.set(true);
                     }
                     case "send_chat" -> {
                         String msg = req.has("message") ? req.get("message").getAsString() : "";
-                        if (!msg.isEmpty()) { client.player.networkHandler.sendChatMessage(msg); ok.set(true); }
+                        if (!msg.isEmpty()) { client.player.connection.sendChat(msg); ok.set(true); }
                         else errMsg.set("empty_message");
                     }
                     case "send_command" -> {
@@ -504,21 +505,21 @@ public class PeripheralHttpServer {
                             String bare = raw.startsWith("/") ? raw.substring(1) : raw;
                             // Singleplayer: execute directly on the integrated server as the player.
                             // This is completely silent — no chat echo, no packet validator.
-                            net.minecraft.server.integrated.IntegratedServer srv = client.getServer();
+                            net.minecraft.client.server.IntegratedServer srv = client.getSingleplayerServer();
                             if (srv != null) {
                                 String finalBare = bare;
                                 srv.execute(() -> {
-                                    net.minecraft.server.network.ServerPlayerEntity sp =
-                                        srv.getPlayerManager().getPlayer(client.player.getUuid());
+                                    net.minecraft.server.level.ServerPlayer sp =
+                                        srv.getPlayerList().getPlayer(client.player.getUUID());
                                     if (sp != null) {
-                                        srv.getCommandManager().parseAndExecute(
-                                            sp.getCommandSource(), "/" + finalBare);
+                                        srv.getCommands().performPrefixedCommand(
+                                            sp.createCommandSourceStack(), "/" + finalBare);
                                     }
                                 });
                             } else {
                                 // Multiplayer fallback: CommandExecutionC2SPacket (bare command, no leading /)
-                                client.player.networkHandler.sendPacket(
-                                    new net.minecraft.network.packet.c2s.play.CommandExecutionC2SPacket(bare));
+                                client.player.connection.send(
+                                    new net.minecraft.network.protocol.game.ServerboundChatCommandPacket(bare));
                             }
                             ok.set(true);
                         } else errMsg.set("empty_message");
@@ -527,7 +528,8 @@ public class PeripheralHttpServer {
                         // Open the scriptable GUI screen with the given layout.
                         // layout: { title, w, h, widgets: [{type, id, x, y, ...}] }
                         JsonObject layout = req.has("layout") ? req.get("layout").getAsJsonObject() : new JsonObject();
-                        ScriptableScreen.openWithLayout(layout);
+                        String guiOwner = req.has("_script") ? req.get("_script").getAsString() : "";
+                        ScriptableScreen.openWithLayout(layout, guiOwner);
                         ok.set(true);
                     }
                     case "update_gui" -> {
@@ -544,7 +546,7 @@ public class PeripheralHttpServer {
                     }
                     case "display_message" -> {
                         String raw = req.has("message") ? req.get("message").getAsString() : "";
-                        client.player.sendMessage(buildChatText(raw), false);
+                        client.player.sendSystemMessage(buildChatText(raw));
                         ok.set(true);
                     }
                     case "send_rich" -> {
@@ -553,8 +555,8 @@ public class PeripheralHttpServer {
                         String jsonStr = req.has("json") ? req.get("json").getAsString() : "";
                         if (!jsonStr.isEmpty()) {
                             try {
-                                Text richText = buildRichText(JsonParser.parseString(jsonStr));
-                                client.player.sendMessage(richText, false);
+                                Component richText = buildRichText(JsonParser.parseString(jsonStr));
+                                client.player.sendSystemMessage(richText);
                                 ok.set(true);
                             } catch (Exception e) {
                                 errMsg.set("parse_error: " + e.getMessage());
@@ -566,7 +568,7 @@ public class PeripheralHttpServer {
                     case "use_item" -> {
                         // Right-click the held item (eating, drinking potions, using bows, etc.)
                         // For food: call this then wait ~1.6s; the server completes the eating.
-                        var result = client.interactionManager.interactItem(client.player, Hand.MAIN_HAND);
+                        var result = client.gameMode.useItem(client.player, InteractionHand.MAIN_HAND);
                         ok.set(true);
                     }
                     case "equip_item" -> {
@@ -576,7 +578,7 @@ public class PeripheralHttpServer {
                         if (keyword.isEmpty()) { errMsg.set("no_item_keyword"); break; }
                         var inv = client.player.getInventory();
                         int sel = inv.getSelectedSlot();
-                        var stacks = inv.getMainStacks();
+                        var stacks = inv.getNonEquipmentItems();
                         // Already in hand?
                         String heldId = stacks.get(sel).getItem().toString().toLowerCase().replace("minecraft:", "");
                         if (heldId.contains(keyword)) { ok.set(true); break; }
@@ -585,9 +587,9 @@ public class PeripheralHttpServer {
                         for (int hi = 0; hi < 9; hi++) {
                             String id = stacks.get(hi).getItem().toString().toLowerCase().replace("minecraft:", "");
                             if (id.contains(keyword)) {
-                                inv.selectedSlot = hi;
-                                client.player.networkHandler.sendPacket(
-                                    new net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket(hi));
+                                inv.selected = hi;
+                                client.player.connection.send(
+                                    new net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket(hi));
                                 ok.set(true); found = true; break;
                             }
                         }
@@ -596,14 +598,93 @@ public class PeripheralHttpServer {
                         for (int mi = 9; mi < stacks.size(); mi++) {
                             String id = stacks.get(mi).getItem().toString().toLowerCase().replace("minecraft:", "");
                             if (id.contains(keyword)) {
-                                ScreenHandler sh = client.player.currentScreenHandler;
+                                AbstractContainerMenu sh = client.player.containerMenu;
                                 // Container slot for main inventory index mi = mi (same index for PlayerScreenHandler)
                                 // Button = hotbar target slot (0-8) swaps that hotbar slot with the given container slot
-                                client.interactionManager.clickSlot(sh.syncId, mi, sel, SlotActionType.SWAP, client.player);
+                                client.gameMode.handleContainerInput(sh.containerId, mi, sel, ContainerInput.SWAP, client.player);
                                 ok.set(true); found = true; break;
                             }
                         }
                         if (!found) { ok.set(false); errMsg.set("item_not_found:" + keyword); }
+                    }
+                    case "look" -> {
+                        // Set player rotation directly by yaw/pitch angles.
+                        // Yaw: 0=south, 90=west, 180/−180=north, −90/270=east
+                        // Pitch: −90=straight up, 0=level, 90=straight down
+                        client.player.setYRot(req.has("yaw")   ? req.get("yaw").getAsFloat()   : 0);
+                        client.player.setXRot(req.has("pitch") ? req.get("pitch").getAsFloat() : 0);
+                        ok.set(true);
+                    }
+                    case "jump" -> {
+                        // Make the player jump (works when on the ground; one-tick impulse).
+                        if (!(client.player.input instanceof NavigatorInput))
+                            client.player.input = new NavigatorInput(client.player.input);
+                        NavigatorInput ni = (NavigatorInput) client.player.input;
+                        ni.scriptJump = true;
+                        ni.scriptOverriding = true;
+                        ok.set(true);
+                    }
+                    case "sprint" -> {
+                        boolean on = !req.has("on") || req.get("on").getAsBoolean();
+                        client.player.setSprinting(on);
+                        if (client.player.input instanceof NavigatorInput ni) {
+                            ni.scriptSprint = on;
+                        }
+                        ok.set(true);
+                    }
+                    case "sneak" -> {
+                        boolean on = !req.has("on") || req.get("on").getAsBoolean();
+                        if (!(client.player.input instanceof NavigatorInput))
+                            client.player.input = new NavigatorInput(client.player.input);
+                        NavigatorInput ni = (NavigatorInput) client.player.input;
+                        ni.scriptSneak = on;
+                        ni.scriptOverriding = on || ni.scriptForward != 0 || ni.scriptStrafe != 0 || ni.scriptJump;
+                        ok.set(true);
+                    }
+                    case "move" -> {
+                        // Set movement vector. Python side controls duration via wait() + move(0,0).
+                        float fwd = req.has("forward") ? req.get("forward").getAsFloat() : 0;
+                        float str = req.has("strafe")  ? req.get("strafe").getAsFloat()  : 0;
+                        if (!(client.player.input instanceof NavigatorInput))
+                            client.player.input = new NavigatorInput(client.player.input);
+                        NavigatorInput ni = (NavigatorInput) client.player.input;
+                        ni.scriptForward = fwd;
+                        ni.scriptStrafe  = str;
+                        ni.scriptOverriding = fwd != 0 || str != 0 || ni.scriptSneak || ni.scriptJump;
+                        ok.set(true);
+                    }
+                    case "attack" -> {
+                        // Left-click attack: hit entity or start breaking block at crosshair.
+                        var hit = client.hitResult;
+                        if (hit instanceof net.minecraft.world.phys.EntityHitResult ehr) {
+                            client.gameMode.attack(client.player, ehr.getEntity());
+                        } else if (hit instanceof net.minecraft.world.phys.BlockHitResult bhr) {
+                            client.gameMode.startDestroyBlock(bhr.getBlockPos(), bhr.getDirection());
+                        }
+                        ok.set(true);
+                    }
+                    case "respawn" -> {
+                        client.player.connection.send(
+                            new net.minecraft.network.protocol.game.ServerboundClientCommandPacket(
+                                net.minecraft.network.protocol.game.ServerboundClientCommandPacket.Action.PERFORM_RESPAWN));
+                        ok.set(true);
+                    }
+                    case "look_at_entity" -> {
+                        if (client.level == null) { errMsg.set("not_in_world"); break; }
+                        String entType = req.has("entity_type") ? req.get("entity_type").getAsString().toLowerCase() : "";
+                        double maxDist = req.has("max_distance") ? req.get("max_distance").getAsDouble() : 16.0;
+                        var searchBox = client.player.getBoundingBox().inflate(maxDist);
+                        var candidates = client.level.getEntitiesOfClass(
+                            net.minecraft.world.entity.LivingEntity.class, searchBox,
+                            e -> e != client.player && e.getType().toString().toLowerCase().contains(entType));
+                        if (candidates.isEmpty()) {
+                            ok.set(false); errMsg.set("no_entity_found:" + entType);
+                        } else {
+                            net.minecraft.world.entity.LivingEntity closest = candidates.stream()
+                                .min(java.util.Comparator.comparingDouble(client.player::distanceTo))
+                                .orElse(null);
+                            if (closest != null) { lookAt(client.player, closest.getEyePosition()); ok.set(true); }
+                        }
                     }
                     default -> errMsg.set("unknown_action_type:" + type);
                 }
@@ -612,7 +693,7 @@ public class PeripheralHttpServer {
         });
 
         try { latch.await(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-        send(ex, 200, ok.get() ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"" + errMsg.get() + "\"}");
+        send(ex, 200, ok.get() ? "{\"ok\":true}" : "{\"ok\":false,\"error\":\"" + esc(errMsg.get()) + "\"}");
     }
 
     // ── GET /nav_scan ─────────────────────────────────────────────────────────
@@ -623,18 +704,18 @@ public class PeripheralHttpServer {
         if (query != null) for (String p : query.split("&"))
             if (p.startsWith("radius=")) try { radius = Math.min(32, Integer.parseInt(p.substring(7))); } catch (NumberFormatException ignored) {}
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        if (client.player == null || client.world == null) { send(ex, 503, err("not_in_game")); return; }
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || client.level == null) { send(ex, 503, err("not_in_game")); return; }
 
-        BlockPos origin = client.player.getBlockPos();
+        BlockPos origin = client.player.blockPosition();
         int ox = origin.getX(), oy = origin.getY(), oz = origin.getZ();
         StringBuilder sb = new StringBuilder(65536);
         sb.append("{\"origin\":{\"x\":").append(ox).append(",\"y\":").append(oy).append(",\"z\":").append(oz).append("},\"blocks\":[");
         boolean first = true;
         for (int dx = -radius; dx <= radius; dx++) for (int dz = -radius; dz <= radius; dz++) for (int y = oy - 4; y <= oy + 8; y++) {
             BlockPos pos = new BlockPos(ox + dx, y, oz + dz);
-            BlockState state = client.world.getBlockState(pos);
-            if (!state.isAir() && !state.getCollisionShape(client.world, pos).isEmpty()) {
+            BlockState state = client.level.getBlockState(pos);
+            if (!state.isAir() && !state.getCollisionShape(client.level, pos).isEmpty()) {
                 if (!first) sb.append(',');
                 sb.append('[').append(ox + dx).append(',').append(y).append(',').append(oz + dz).append(']');
                 first = false;
@@ -648,7 +729,7 @@ public class PeripheralHttpServer {
     private static void handleGoto(HttpExchange ex) throws IOException {
         if (!ex.getRequestMethod().equals("POST")) { send(ex, 405, err("method_not_allowed")); return; }
         try {
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player == null) { send(ex, 503, err("not_in_game")); return; }
             JsonObject req = parseBody(ex);
             PeripheralNavigator.INSTANCE.navigateTo(
@@ -664,37 +745,39 @@ public class PeripheralHttpServer {
     private static void handleNavStatus(HttpExchange ex) throws IOException {
         if (!ex.getRequestMethod().equals("GET")) { send(ex, 405, err("method_not_allowed")); return; }
         PeripheralNavigator nav = PeripheralNavigator.INSTANCE;
-        MinecraftClient client  = MinecraftClient.getInstance();
+        Minecraft client  = Minecraft.getInstance();
         String posStr = "null";
         if (client.player != null)
             posStr = String.format("{\"x\":%.2f,\"y\":%.2f,\"z\":%.2f}", client.player.getX(), client.player.getY(), client.player.getZ());
+        boolean hasBaritone = net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("baritone");
         send(ex, 200, "{\"status\":\"" + nav.getNavStatus().name().toLowerCase()
-            + "\",\"reason\":\"" + nav.getFailReason().replace("\"","\\\"")
+            + "\",\"reason\":\"" + esc(nav.getFailReason())
             + "\",\"waypoints_left\":" + nav.getWpLeft()
+            + ",\"baritone\":" + hasBaritone
             + ",\"pos\":" + posStr + "}");
     }
 
     // ── POST /nav_stop ────────────────────────────────────────────────────────
     private static void handleNavStop(HttpExchange ex) throws IOException {
         try { PeripheralNavigator.INSTANCE.stop(); send(ex, 200, "{\"ok\":true}"); }
-        catch (Throwable t) { send(ex, 500, "{\"error\":\"" + t.getMessage() + "\"}"); }
+        catch (Throwable t) { send(ex, 500, "{\"error\":\"" + esc(t.getMessage()) + "\"}"); }
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static BlockPos findNearby(MinecraftClient c, String keyword, int radius) {
-        BlockPos origin = c.player.getBlockPos();
+    private static BlockPos findNearby(Minecraft c, String keyword, int radius) {
+        BlockPos origin = c.player.blockPosition();
         for (int dx = -radius; dx <= radius; dx++) for (int dy = -3; dy <= 3; dy++) for (int dz = -radius; dz <= radius; dz++) {
-            BlockPos p = origin.add(dx, dy, dz);
-            if (c.world.getBlockState(p).getBlock().toString().contains(keyword)) return p;
+            BlockPos p = origin.offset(dx, dy, dz);
+            if (c.level.getBlockState(p).getBlock().toString().contains(keyword)) return p;
         }
         return null;
     }
 
-    private static void lookAt(ClientPlayerEntity player, Vec3d target) {
-        Vec3d dir = target.subtract(player.getEyePos()).normalize();
-        player.setYaw((float) Math.toDegrees(Math.atan2(-dir.x, dir.z)));
-        player.setPitch((float) Math.toDegrees(-Math.asin(Math.max(-1, Math.min(1, dir.y)))));
+    private static void lookAt(LocalPlayer player, Vec3 target) {
+        Vec3 dir = target.subtract(player.getEyePosition()).normalize();
+        player.setYRot((float) Math.toDegrees(Math.atan2(-dir.x, dir.z)));
+        player.setXRot((float) Math.toDegrees(-Math.asin(Math.max(-1, Math.min(1, dir.y)))));
     }
 
     private static Direction dirFrom(String s) {
@@ -703,6 +786,65 @@ public class PeripheralHttpServer {
             case "east"  -> Direction.EAST;  case "west"  -> Direction.WEST;
             case "down"  -> Direction.DOWN;  default      -> Direction.UP;
         };
+    }
+
+    // ── GET /block?x=&y=&z= ──────────────────────────────────────────────────
+    private static void handleBlock(HttpExchange ex) throws IOException {
+        if (!ex.getRequestMethod().equals("GET")) { send(ex, 405, err("method_not_allowed")); return; }
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || client.level == null) { send(ex, 503, err("not_in_game")); return; }
+        int x = 0, y = 64, z = 0;
+        String query = ex.getRequestURI().getQuery();
+        if (query != null) {
+            for (String p : query.split("&")) {
+                if (p.startsWith("x=")) try { x = Integer.parseInt(p.substring(2)); } catch (NumberFormatException ignored) {}
+                if (p.startsWith("y=")) try { y = Integer.parseInt(p.substring(2)); } catch (NumberFormatException ignored) {}
+                if (p.startsWith("z=")) try { z = Integer.parseInt(p.substring(2)); } catch (NumberFormatException ignored) {}
+            }
+        }
+        BlockPos pos = new BlockPos(x, y, z);
+        BlockState bs = client.level.getBlockState(pos);
+        JsonObject resp = new JsonObject();
+        resp.addProperty("x",      x);
+        resp.addProperty("y",      y);
+        resp.addProperty("z",      z);
+        resp.addProperty("block",  bs.getBlock().toString());
+        resp.addProperty("is_air", bs.isAir());
+        send(ex, 200, GSON.toJson(resp));
+    }
+
+    // ── GET /target ───────────────────────────────────────────────────────────
+    private static void handleTarget(HttpExchange ex) throws IOException {
+        if (!ex.getRequestMethod().equals("GET")) { send(ex, 405, err("method_not_allowed")); return; }
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null) { send(ex, 503, err("not_in_game")); return; }
+        JsonObject resp = new JsonObject();
+        var hit = client.hitResult;
+        if (hit instanceof net.minecraft.world.phys.BlockHitResult bhr) {
+            BlockPos bp = bhr.getBlockPos();
+            resp.addProperty("type",  "block");
+            resp.addProperty("x",     bp.getX());
+            resp.addProperty("y",     bp.getY());
+            resp.addProperty("z",     bp.getZ());
+            resp.addProperty("face",  bhr.getDirection().getName());
+            if (client.level != null)
+                resp.addProperty("block", client.level.getBlockState(bp).getBlock().toString());
+        } else if (hit instanceof net.minecraft.world.phys.EntityHitResult ehr) {
+            var entity = ehr.getEntity();
+            resp.addProperty("type",        "entity");
+            resp.addProperty("entity_type", entity.getType().toString());
+            resp.addProperty("x",           entity.getBlockX());
+            resp.addProperty("y",           entity.getBlockY());
+            resp.addProperty("z",           entity.getBlockZ());
+            resp.addProperty("distance",    Math.round(client.player.distanceTo(entity) * 10.0) / 10.0);
+            if (entity instanceof net.minecraft.world.entity.LivingEntity le)
+                resp.addProperty("health", le.getHealth());
+            if (entity.hasCustomName())
+                resp.addProperty("custom_name", entity.getCustomName().getString());
+        } else {
+            resp.addProperty("type", "miss");
+        }
+        send(ex, 200, GSON.toJson(resp));
     }
 
     // ── GET /gui ─────────────────────────────────────────────────────────────
@@ -794,24 +936,24 @@ public class PeripheralHttpServer {
     // so it opens in the player's default browser when clicked in chat.
     private static final Pattern CHAT_URL_PAT = Pattern.compile("https?://[^\\s§]+");
 
-    private static MutableText buildChatText(String raw) {
-        MutableText out = Text.empty();
+    private static MutableComponent buildChatText(String raw) {
+        MutableComponent out = Component.empty();
         Matcher m = CHAT_URL_PAT.matcher(raw);
         int last = 0;
         while (m.find()) {
             if (m.start() > last)
-                out.append(Text.literal(raw.substring(last, m.start())));
+                out.append(Component.literal(raw.substring(last, m.start())));
             String url = m.group();
-            out.append(Text.literal(url).styled(s -> s
-                .withColor(Formatting.AQUA)
-                .withUnderline(true)
+            out.append(Component.literal(url).withStyle(s -> s
+                .withColor(ChatFormatting.AQUA)
+                .withUnderlined(true)
                 .withClickEvent(new ClickEvent.OpenUrl(java.net.URI.create(url)))
-                .withHoverEvent(new net.minecraft.text.HoverEvent.ShowText(
-                    Text.literal("Open in browser")))));
+                .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
+                    Component.literal("Open in browser")))));
             last = m.end();
         }
         if (last < raw.length())
-            out.append(Text.literal(raw.substring(last)));
+            out.append(Component.literal(raw.substring(last)));
         return out;
     }
 
@@ -820,36 +962,36 @@ public class PeripheralHttpServer {
     // Handles arrays (sibling list), objects (single component), and the four
     // main clickEvent action types.  Accepts both the old "value" key and the
     // 1.21.5+ renamed keys ("command", "url") for each action.
-    private static MutableText buildRichText(com.google.gson.JsonElement element) {
-        if (element == null || element.isJsonNull()) return Text.empty();
+    private static MutableComponent buildRichText(com.google.gson.JsonElement element) {
+        if (element == null || element.isJsonNull()) return Component.empty();
 
         // Array → concatenate siblings
         if (element.isJsonArray()) {
-            MutableText out = Text.empty();
+            MutableComponent out = Component.empty();
             for (com.google.gson.JsonElement child : element.getAsJsonArray())
                 out.append(buildRichText(child));
             return out;
         }
 
         // Primitive string → plain text
-        if (element.isJsonPrimitive()) return Text.literal(element.getAsString());
+        if (element.isJsonPrimitive()) return Component.literal(element.getAsString());
 
         // Object → full component
         com.google.gson.JsonObject obj = element.getAsJsonObject();
         String text = obj.has("text") ? obj.get("text").getAsString() : "";
-        MutableText comp = Text.literal(text);
+        MutableComponent comp = Component.literal(text);
 
-        net.minecraft.text.Style style = net.minecraft.text.Style.EMPTY;
+        net.minecraft.network.chat.Style style = net.minecraft.network.chat.Style.EMPTY;
 
         // Color
         if (obj.has("color")) {
-            Formatting fmt = Formatting.byName(obj.get("color").getAsString());
+            ChatFormatting fmt = ChatFormatting.getByName(obj.get("color").getAsString());
             if (fmt != null) style = style.withColor(fmt);
         }
         // Decorations
         if (obj.has("bold")        && obj.get("bold").getAsBoolean())        style = style.withBold(true);
         if (obj.has("italic")      && obj.get("italic").getAsBoolean())      style = style.withItalic(true);
-        if (obj.has("underlined")  && obj.get("underlined").getAsBoolean())  style = style.withUnderline(true);
+        if (obj.has("underlined")  && obj.get("underlined").getAsBoolean())  style = style.withUnderlined(true);
         if (obj.has("obfuscated")  && obj.get("obfuscated").getAsBoolean())  style = style.withObfuscated(true);
         if (obj.has("strikethrough") && obj.get("strikethrough").getAsBoolean()) style = style.withStrikethrough(true);
 
@@ -882,7 +1024,7 @@ public class PeripheralHttpServer {
                 com.google.gson.JsonElement contents = he.has("contents") ? he.get("contents")
                                                      : he.has("value")    ? he.get("value") : null;
                 if (contents != null)
-                    style = style.withHoverEvent(new net.minecraft.text.HoverEvent.ShowText(
+                    style = style.withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
                         buildRichText(contents)));
             }
         }

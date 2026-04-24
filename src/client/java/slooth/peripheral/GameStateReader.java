@@ -2,45 +2,47 @@ package slooth.peripheral;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.HostileEntity;
-import net.minecraft.entity.passive.TameableEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.world.World;
-
 import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 
 public class GameStateReader {
 
     public static JsonObject getState() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         JsonObject state = new JsonObject();
 
-        if (client.player == null || client.world == null) {
+        if (client.player == null || client.level == null) {
             state.addProperty("error", "not_in_game");
             return state;
         }
 
-        ClientPlayerEntity player = client.player;
-        World world = client.world;
+        LocalPlayer player = client.player;
+        Level world = client.level;
 
         // ── Health & stats ─────────────────────────────────────────────────
         state.addProperty("health",      player.getHealth());
         state.addProperty("max_health",  player.getMaxHealth());
-        state.addProperty("hunger",      player.getHungerManager().getFoodLevel());
+        state.addProperty("hunger",      player.getFoodData().getFoodLevel());
         state.addProperty("is_dead",     !player.isAlive());
         state.addProperty("xp_level",   player.experienceLevel);
 
         // ── Look direction ─────────────────────────────────────────────────
-        state.addProperty("yaw",   player.getYaw());
-        state.addProperty("pitch", player.getPitch());
+        state.addProperty("yaw",   player.getYRot());
+        state.addProperty("pitch", player.getXRot());
 
         // ── Position ───────────────────────────────────────────────────────
-        BlockPos pos = player.getBlockPos();
+        BlockPos pos = player.blockPosition();
         JsonObject posObj = new JsonObject();
         posObj.addProperty("x", pos.getX());
         posObj.addProperty("y", pos.getY());
@@ -50,34 +52,61 @@ public class GameStateReader {
         // ── Window / GUI info ──────────────────────────────────────────────
         state.addProperty("window_x",            client.getWindow().getX());
         state.addProperty("window_y",            client.getWindow().getY());
-        state.addProperty("window_width",        client.getWindow().getWidth());
-        state.addProperty("window_height",       client.getWindow().getHeight());
-        state.addProperty("window_scaled_width",  client.getWindow().getScaledWidth());
-        state.addProperty("window_scaled_height", client.getWindow().getScaledHeight());
-        state.addProperty("gui_scale",           (int) client.getWindow().getScaleFactor());
+        state.addProperty("window_width",        client.getWindow().getScreenWidth());
+        state.addProperty("window_height",       client.getWindow().getScreenHeight());
+        state.addProperty("window_scaled_width",  client.getWindow().getGuiScaledWidth());
+        state.addProperty("window_scaled_height", client.getWindow().getGuiScaledHeight());
+        state.addProperty("gui_scale",           (int) client.getWindow().getGuiScale());
         // mouse_sensitivity removed — GameOptions.mouseSensitivity is private in 1.21.11
 
         // ── Current open screen ────────────────────────────────────────────
         state.addProperty("current_screen",
-            client.currentScreen != null ? client.currentScreen.getClass().getSimpleName() : "none");
+            client.screen != null ? client.screen.getClass().getSimpleName() : "none");
 
         // ── World info ─────────────────────────────────────────────────────
-        state.addProperty("dimension", world.getRegistryKey().getValue().toString());
-        long timeOfDay = world.getTimeOfDay() % 24000;
+        state.addProperty("dimension", world.dimension().identifier().toString());
+        long timeOfDay = world.getOverworldClockTime() % 24000;
         state.addProperty("time_ticks",   timeOfDay);
         state.addProperty("is_day",       timeOfDay < 13000);
         state.addProperty("is_raining",   world.isRaining());
         state.addProperty("is_thundering", world.isThundering());
-        if (client.interactionManager != null)
-            state.addProperty("gamemode", client.interactionManager.getCurrentGameMode().asString());
+        if (client.gameMode != null)
+            state.addProperty("gamemode", client.gameMode.getPlayerMode().getSerializedName());
+
+        // ── Movement state ─────────────────────────────────────────────────
+        state.addProperty("on_ground", player.onGround());
+        state.addProperty("in_water",  player.isInWater());
+        state.addProperty("in_lava",   player.isInLava());
+
+        // ── Status effects ─────────────────────────────────────────────────
+        JsonArray effects = new JsonArray();
+        for (MobEffectInstance eff : player.getActiveEffects()) {
+            JsonObject e = new JsonObject();
+            net.minecraft.resources.Identifier effId =
+                BuiltInRegistries.MOB_EFFECT.getKey(eff.getEffect().value());
+            e.addProperty("id",             effId != null ? effId.toString() : "unknown");
+            e.addProperty("duration_ticks", eff.getDuration());
+            e.addProperty("amplifier",      eff.getAmplifier());
+            effects.add(e);
+        }
+        state.add("effects", effects);
+
+        // ── Armor & offhand ────────────────────────────────────────────────
+        JsonObject armor = new JsonObject();
+        armor.add("head",  itemStackToJson(player.getItemBySlot(EquipmentSlot.HEAD)));
+        armor.add("chest", itemStackToJson(player.getItemBySlot(EquipmentSlot.CHEST)));
+        armor.add("legs",  itemStackToJson(player.getItemBySlot(EquipmentSlot.LEGS)));
+        armor.add("feet",  itemStackToJson(player.getItemBySlot(EquipmentSlot.FEET)));
+        state.add("armor",   armor);
+        state.add("offhand", itemStackToJson(player.getOffhandItem()));
 
         // ── Equipped item ──────────────────────────────────────────────────
-        state.add("equipped", itemStackToJson(player.getMainHandStack()));
+        state.add("equipped", itemStackToJson(player.getMainHandItem()));
 
         // ── Inventory ──────────────────────────────────────────────────────
         JsonArray inventory = new JsonArray();
-        for (int i = 0; i < player.getInventory().getMainStacks().size(); i++) {
-            ItemStack stack = player.getInventory().getMainStacks().get(i);
+        for (int i = 0; i < player.getInventory().getNonEquipmentItems().size(); i++) {
+            ItemStack stack = player.getInventory().getNonEquipmentItems().get(i);
             if (!stack.isEmpty()) {
                 JsonObject item = itemStackToJson(stack);
                 item.addProperty("slot", i);
@@ -87,21 +116,21 @@ public class GameStateReader {
         state.add("inventory", inventory);
 
         // ── Nearby entities (16-block radius) ─────────────────────────────
-        Box searchBox = player.getBoundingBox().expand(16, 8, 16);
-        List<LivingEntity> nearby = world.getEntitiesByClass(LivingEntity.class, searchBox, e -> e != player);
+        AABB searchBox = player.getBoundingBox().inflate(16, 8, 16);
+        List<LivingEntity> nearby = world.getEntitiesOfClass(LivingEntity.class, searchBox, e -> e != player);
         JsonArray entitiesArr = new JsonArray();
         for (LivingEntity entity : nearby) {
             JsonObject ent = new JsonObject();
             ent.addProperty("type",     entity.getType().toString());
             ent.addProperty("distance", Math.round(player.distanceTo(entity) * 10.0) / 10.0);
-            ent.addProperty("hostile",  entity instanceof HostileEntity);
+            ent.addProperty("hostile",  entity instanceof Monster);
             ent.addProperty("health",   entity.getHealth());
             ent.addProperty("x", entity.getBlockX());
             ent.addProperty("y", entity.getBlockY());
             ent.addProperty("z", entity.getBlockZ());
-            if (entity instanceof TameableEntity t) {
-                ent.addProperty("tamed", t.isTamed());
-                if (t.isTamed() && t.getOwner() != null)
+            if (entity instanceof TamableAnimal t) {
+                ent.addProperty("tamed", t.isTame());
+                if (t.isTame() && t.getOwner() != null)
                     ent.addProperty("owner", t.getOwner().getName().getString());
             }
             if (entity.hasCustomName()) {
@@ -115,11 +144,11 @@ public class GameStateReader {
 
         // ── Nearby blocks of interest (6-block radius) ─────────────────────
         JsonArray nearbyBlocks = new JsonArray();
-        BlockPos playerPos = player.getBlockPos();
+        BlockPos playerPos = player.blockPosition();
         for (int dx = -6; dx <= 6; dx++) {
             for (int dy = -4; dy <= 4; dy++) {
                 for (int dz = -6; dz <= 6; dz++) {
-                    BlockPos check = playerPos.add(dx, dy, dz);
+                    BlockPos check = playerPos.offset(dx, dy, dz);
                     String bn = world.getBlockState(check).getBlock().toString();
                     if (isInteresting(bn)) {
                         JsonObject block = new JsonObject();
@@ -153,9 +182,9 @@ public class GameStateReader {
         } else {
             obj.addProperty("item",  stack.getItem().toString());
             obj.addProperty("count", stack.getCount());
-            if (stack.isDamageable()) {
+            if (stack.isDamageableItem()) {
                 int maxDmg = stack.getMaxDamage();
-                int dmg    = stack.getDamage();
+                int dmg    = stack.getDamageValue();
                 float pct  = maxDmg > 0 ? (1.0f - (float) dmg / maxDmg) * 100f : 100f;
                 obj.addProperty("durability_pct", Math.round(pct));
                 obj.addProperty("max_damage",     maxDmg);

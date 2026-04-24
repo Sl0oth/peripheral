@@ -1,11 +1,10 @@
 package slooth.peripheral;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.util.math.BlockPos;
-
 import java.util.*;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Client-side A* pathfinder + tick-based movement executor.
@@ -45,10 +44,10 @@ public class PeripheralNavigator {
             lastX = Double.NaN;
             jumpPending = false;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         Thread t = new Thread(() -> {
             try {
-                if (client.player == null || client.world == null) { fail("not_in_game"); return; }
+                if (client.player == null || client.level == null) { fail("not_in_game"); return; }
                 int sx = (int) Math.floor(client.player.getX());
                 int sy = (int) Math.floor(client.player.getY());
                 int sz = (int) Math.floor(client.player.getZ());
@@ -78,7 +77,7 @@ public class PeripheralNavigator {
             path = Collections.emptyList();
             wpLeft = 0;
         }
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         client.execute(() -> restoreInput(client));
     }
 
@@ -88,9 +87,9 @@ public class PeripheralNavigator {
 
     // ── Called every END_CLIENT_TICK ──────────────────────────────────────────
 
-    public void tick(MinecraftClient client) {
+    public void tick(Minecraft client) {
         if (status != NavStatus.RUNNING) return;
-        ClientPlayerEntity player = client.player;
+        LocalPlayer player = client.player;
         if (player == null) { fail("player_null"); return; }
 
         double cx = player.getX(), cy = player.getY(), cz = player.getZ();
@@ -139,10 +138,10 @@ public class PeripheralNavigator {
         }
 
         float targetYaw = (float) Math.toDegrees(Math.atan2(-wpDx, wpDz));
-        player.setYaw(targetYaw);
-        player.setPitch(0f);
+        player.setYRot(targetYaw);
+        player.setXRot(0f);
 
-        boolean needsJump = (wp[1] > (int) Math.floor(cy)) && player.isOnGround();
+        boolean needsJump = (wp[1] > (int) Math.floor(cy)) && player.onGround();
         NavigatorInput ni = getNavInput(client);
         if (ni != null) { ni.navForward = 1.0f; ni.navJump = needsJump || jumpPending; ni.overriding = true; }
         player.setSprinting(true);
@@ -150,14 +149,14 @@ public class PeripheralNavigator {
 
     // ── Input management ──────────────────────────────────────────────────────
 
-    private void installInput(MinecraftClient client) {
+    private void installInput(Minecraft client) {
         if (client.player == null) return;
         if (!(client.player.input instanceof NavigatorInput))
             client.player.input = new NavigatorInput(client.player.input);
         ((NavigatorInput) client.player.input).overriding = true;
     }
 
-    private void restoreInput(MinecraftClient client) {
+    private void restoreInput(Minecraft client) {
         if (client.player == null) return;
         if (client.player.input instanceof NavigatorInput ni) {
             ni.overriding = false; ni.navForward = 0f; ni.navJump = false;
@@ -165,7 +164,7 @@ public class PeripheralNavigator {
         }
     }
 
-    private NavigatorInput getNavInput(MinecraftClient client) {
+    private NavigatorInput getNavInput(Minecraft client) {
         if (client.player != null && client.player.input instanceof NavigatorInput ni) return ni;
         client.execute(() -> installInput(client));
         return null;
@@ -180,13 +179,13 @@ public class PeripheralNavigator {
     private static final double COST_STRAIGHT = 1.00, COST_DIAGONAL = 1.4142135, COST_JUMP = 2.0;
     private static final double[] COST_FALL   = {0.0, 0.5, 0.8, 1.2};
 
-    private boolean isSolid(MinecraftClient c, int x, int y, int z) {
+    private boolean isSolid(Minecraft c, int x, int y, int z) {
         BlockPos pos = new BlockPos(x, y, z);
-        BlockState bs = c.world.getBlockState(pos);
-        return !bs.isAir() && !bs.getCollisionShape(c.world, pos).isEmpty();
+        BlockState bs = c.level.getBlockState(pos);
+        return !bs.isAir() && !bs.getCollisionShape(c.level, pos).isEmpty();
     }
 
-    private boolean canStand(MinecraftClient c, int x, int y, int z) {
+    private boolean canStand(Minecraft c, int x, int y, int z) {
         return isSolid(c, x, y - 1, z) && !isSolid(c, x, y, z) && !isSolid(c, x, y + 1, z);
     }
 
@@ -197,7 +196,7 @@ public class PeripheralNavigator {
     private static int decY(long k) { return (int)((k >> 20) & 0xFFFFF) - 1_000; }
     private static int decZ(long k) { return (int)(k & 0xFFFFF) - 500_000; }
 
-    private List<int[]> astar(MinecraftClient c, int sx, int sy, int sz, int gx, int gy, int gz, int maxNodes) {
+    private List<int[]> astar(Minecraft c, int sx, int sy, int sz, int gx, int gy, int gz, int maxNodes) {
         outer: for (int dy = 0; dy <= 3; dy++) for (int s : new int[]{0, dy, -dy})
             if (canStand(c, sx, sy + s, sz)) { sy += s; break outer; }
         outer2: for (int dy = 0; dy <= 4; dy++) for (int s : new int[]{0, dy, -dy})

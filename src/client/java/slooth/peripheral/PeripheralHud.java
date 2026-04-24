@@ -2,14 +2,15 @@ package slooth.peripheral;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.resources.Identifier;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -103,26 +104,27 @@ public class PeripheralHud {
     // ── Registration ──────────────────────────────────────────────────────────
 
     public static void register() {
-        HudRenderCallback.EVENT.register((ctx, tickDelta) -> {
-            if (elements.isEmpty()) return;
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client.player == null) return;
-            render(ctx, client);
-        });
+        HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("peripheral", "hud"),
+            (ctx, tickDelta) -> {
+                if (elements.isEmpty()) return;
+                Minecraft client = Minecraft.getInstance();
+                if (client.player == null) return;
+                render(ctx, client);
+            });
     }
 
     // ── Rendering ─────────────────────────────────────────────────────────────
 
-    private static void render(DrawContext ctx, MinecraftClient client) {
-        int sw = client.getWindow().getScaledWidth();
-        int sh = client.getWindow().getScaledHeight();
+    private static void render(GuiGraphicsExtractor ctx, Minecraft client) {
+        int sw = ctx.guiWidth();
+        int sh = ctx.guiHeight();
         for (JsonObject el : elements) {
             try { renderElement(ctx, el, sw, sh, client); }
             catch (Exception ignored) {}
         }
     }
 
-    private static void renderElement(DrawContext ctx, JsonObject el, int sw, int sh, MinecraftClient client) {
+    private static void renderElement(GuiGraphicsExtractor ctx, JsonObject el, int sw, int sh, Minecraft client) {
         String type   = str(el, "type",   "label");
         String anchor = str(el, "anchor", "top_left");
         int rawX = num(el, "x", 0);
@@ -138,7 +140,7 @@ public class PeripheralHud {
             case "bar", "rect" -> { elW = num(el, "w", 100); elH = num(el, "h", type.equals("bar") ? 5 : 20); }
             case "divider"     -> { elW = num(el, "w", 100); elH = 1; }
             case "item"        -> { elW = 16; elH = 16; }
-            default            -> { elW = labelLeftAlign ? 0 : client.textRenderer.getWidth(str(el, "text", "")); elH = 9; }
+            default            -> { elW = labelLeftAlign ? 0 : client.font.width(str(el, "text", "")); elH = client.font.lineHeight; }
         }
 
         // Resolve anchor → actual screen coordinates
@@ -158,7 +160,7 @@ public class PeripheralHud {
                 String  text   = str(el,  "text",   "");
                 int     color  = color(el, "color",  0xFFDDDDDD);
                 boolean shadow = bool(el, "shadow",  false);
-                ctx.drawText(client.textRenderer, Text.literal(text), x, y, color, shadow);
+                ctx.text(client.font, Component.literal(text), x, y, color, shadow);
             }
             case "rect" -> {
                 int rw  = num(el,   "w",       50);
@@ -192,8 +194,8 @@ public class PeripheralHud {
                 String itemId = str(el, "item_id", "");
                 if (!itemId.isEmpty()) {
                     Identifier ident = Identifier.tryParse(itemId);
-                    if (ident != null && Registries.ITEM.containsId(ident)) {
-                        ctx.drawItem(new ItemStack(Registries.ITEM.get(ident)), x, y);
+                    if (ident != null && BuiltInRegistries.ITEM.containsKey(ident)) {
+                        ctx.item(new ItemStack(BuiltInRegistries.ITEM.getValue(ident)), x, y);
                     }
                 }
             }

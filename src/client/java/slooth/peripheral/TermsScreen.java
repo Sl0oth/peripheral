@@ -1,9 +1,9 @@
 package slooth.peripheral;
 
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 
 /**
  * Terms of Use acceptance screen — shown before the player can open
@@ -85,10 +85,10 @@ public class TermsScreen extends Screen {
     private int    ticksRemaining = 300; // 15 s
     private boolean unlocked      = false;
 
-    private ButtonWidget acceptBtn;
+    private Button acceptBtn;
 
     public TermsScreen(Screen nextScreen) {
-        super(Text.literal("Terms of Use"));
+        super(Component.literal("Terms of Use"));
         this.nextScreen = nextScreen;
     }
 
@@ -107,23 +107,23 @@ public class TermsScreen extends Screen {
         int btnY = py + H - BH + 4;
         int cx   = px + W / 2;
 
-        this.addDrawableChild(ButtonWidget.builder(
-                Text.literal("Not now"),
-                btn -> client.setScreen(null))
-            .dimensions(cx - 106, btnY, 100, 20)
+        this.addRenderableWidget(Button.builder(
+                Component.literal("Not now"),
+                btn -> minecraft.setScreen(null))
+            .bounds(cx - 106, btnY, 100, 20)
             .build());
 
-        acceptBtn = ButtonWidget.builder(
-                Text.literal("Accept (15s)"),
+        acceptBtn = Button.builder(
+                Component.literal("Accept (15s)"),
                 btn -> {
                     PeripheralConfig.termsAccepted = true;
                     PeripheralConfig.save();
-                    client.setScreen(nextScreen);
+                    minecraft.setScreen(nextScreen);
                 })
-            .dimensions(cx + 6, btnY, 100, 20)
+            .bounds(cx + 6, btnY, 100, 20)
             .build();
         acceptBtn.active = false;
-        this.addDrawableChild(acceptBtn);
+        this.addRenderableWidget(acceptBtn);
     }
 
     // ── Tick ──────────────────────────────────────────────────────────────────
@@ -138,10 +138,10 @@ public class TermsScreen extends Screen {
 
         if (unlocked) {
             acceptBtn.active = true;
-            acceptBtn.setMessage(Text.literal("Accept"));
+            acceptBtn.setMessage(Component.literal("Accept"));
         } else {
             int secs = (ticksRemaining + 19) / 20;
-            acceptBtn.setMessage(Text.literal("Accept (" + secs + "s)"));
+            acceptBtn.setMessage(Component.literal("Accept (" + secs + "s)"));
         }
     }
 
@@ -155,14 +155,14 @@ public class TermsScreen extends Screen {
 
     // ── Render ────────────────────────────────────────────────────────────────
     @Override
-    public void renderBackground(DrawContext ctx, int mx, int my, float delta) {
+    public void extractBackground(GuiGraphicsExtractor ctx, int mx, int my, float delta) {
         // Darken game world behind the panel
         ctx.fill(0, 0, this.width, this.height, 0x88000000);
     }
 
     @Override
-    public void render(DrawContext ctx, int mx, int my, float delta) {
-        renderBackground(ctx, mx, my, delta);
+    public void extractRenderState(GuiGraphicsExtractor ctx, int mx, int my, float delta) {
+        extractBackground(ctx, mx, my, delta);
 
         int x0 = px, y0 = py, x1 = px + W, y1 = py + H;
 
@@ -172,8 +172,8 @@ public class TermsScreen extends Screen {
         // ── Title bar ─────────────────────────────────────────────────────────
         ctx.fill(x0, y0, x1, y0 + TH, C_TITLE);
         ctx.fill(x0, y0 + TH, x1, y0 + TH + 1, C_BORDER);
-        ctx.drawCenteredTextWithShadow(textRenderer,
-            Text.literal("Peripheral — Terms of Use"),
+        ctx.centeredText(font,
+            Component.literal("Peripheral — Terms of Use"),
             x0 + W / 2, y0 + 3, C_ORANGE);
 
         // ── Border ────────────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ public class TermsScreen extends Screen {
         int ty = scrollY0 + PAD - (int) scrollPx;
         for (String line : LINES) {
             if (ty + LINE_H > scrollY0 && ty < scrollY1) {
-                ctx.drawTextWithShadow(textRenderer, Text.literal(line),
+                ctx.text(font, Component.literal(line),
                     textX, ty, C_WHITE);
             }
             ty += LINE_H;
@@ -210,10 +210,10 @@ public class TermsScreen extends Screen {
         int   barY  = scrollY0 + (int) ((scrollRegionH - barH) * frac);
         ctx.fill(sbX, barY, sbX + SB_W, barY + barH, C_SCROLL_THUMB);
 
-        super.render(ctx, mx, my, delta);
+        super.extractRenderState(ctx, mx, my, delta);
     }
 
     // ── Screen flags ──────────────────────────────────────────────────────────
     @Override public boolean shouldCloseOnEsc() { return false; }
-    @Override public boolean shouldPause()      { return false; }
+    @Override public boolean isPauseScreen()      { return false; }
 }

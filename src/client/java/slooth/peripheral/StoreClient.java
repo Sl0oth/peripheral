@@ -167,21 +167,24 @@ public class StoreClient {
     /**
      * Submit a script to the store for review.
      * displayAuthor is shown publicly; realAuthor is stored server-side for admins only.
-     * Callback receives true on HTTP 201, false on any error.
+     * submitterUuid is the player's UUID — used later to verify ownership for updates.
+     * Callback receives the assigned store ID on success, null on any error.
      */
     public static void submit(String name, String description,
                                String displayAuthor, String realAuthor,
-                               String content, java.util.function.Consumer<Boolean> callback) {
+                               String content, String submitterUuid,
+                               Consumer<String> callback) {
         POOL.submit(() -> {
             try {
                 String url = PeripheralConfig.storeUrl.replaceAll("/+$", "") + "/api/store/submit";
                 JsonObject body = new JsonObject();
-                body.addProperty("name",         name);
-                body.addProperty("description",  description);
-                body.addProperty("author",        displayAuthor);
-                body.addProperty("submitted_by",  realAuthor);
-                body.addProperty("content",       content);
-                body.addProperty("category",      "general");
+                body.addProperty("name",           name);
+                body.addProperty("description",    description);
+                body.addProperty("author",         displayAuthor);
+                body.addProperty("submitted_by",   realAuthor);
+                body.addProperty("content",        content);
+                body.addProperty("category",       "general");
+                body.addProperty("submitter_uuid", submitterUuid);
                 HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .header("Content-Type", "application/json")
@@ -190,9 +193,47 @@ public class StoreClient {
                     .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))
                     .build();
                 HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
-                callback.accept(resp.statusCode() == 201);
+                if (resp.statusCode() == 201) {
+                    JsonObject r = JsonParser.parseString(resp.body()).getAsJsonObject();
+                    callback.accept(r.has("id") ? r.get("id").getAsString() : null);
+                } else {
+                    callback.accept(null);
+                }
             } catch (Exception e) {
                 PeripheralClient.LOGGER.warn("[Store] submit failed: {}", e.getMessage());
+                callback.accept(null);
+            }
+        });
+    }
+
+    /**
+     * Update an existing store script.  The submitterUuid must match what was recorded
+     * at submission time — the server returns 403 if it doesn't.
+     * Callback receives true on success, false on any error.
+     */
+    public static void update(String storeId, String submitterUuid,
+                               String name, String description, String content,
+                               Consumer<Boolean> callback) {
+        POOL.submit(() -> {
+            try {
+                String url = PeripheralConfig.storeUrl.replaceAll("/+$", "")
+                    + "/api/store/update/" + storeId;
+                JsonObject body = new JsonObject();
+                body.addProperty("name",           name);
+                body.addProperty("description",    description);
+                body.addProperty("content",        content);
+                body.addProperty("submitter_uuid", submitterUuid);
+                HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .header("User-Agent", UA)
+                    .timeout(Duration.ofSeconds(15))
+                    .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))
+                    .build();
+                HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+                callback.accept(resp.statusCode() == 200);
+            } catch (Exception e) {
+                PeripheralClient.LOGGER.warn("[Store] update failed: {}", e.getMessage());
                 callback.accept(false);
             }
         });

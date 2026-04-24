@@ -3,18 +3,11 @@ package slooth.peripheral;
 import com.google.gson.*;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.entity.BlockEntity;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
-
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -36,15 +29,15 @@ public class BlockTracker {
         load();
 
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
-            if (world instanceof net.minecraft.client.world.ClientWorld) {
-                ItemStack held = player.getStackInHand(hand);
+            if (world instanceof net.minecraft.client.multiplayer.ClientLevel) {
+                ItemStack held = player.getItemInHand(hand);
                 if (held.getItem() instanceof BlockItem) {
-                    BlockPos placed = hitResult.getBlockPos().offset(hitResult.getSide());
+                    BlockPos placed = hitResult.getBlockPos().relative(hitResult.getDirection());
                     placedBlocks.put(blockKey(placed, world), player.getName().getString());
                     saveAsync();
                 }
             }
-            return ActionResult.PASS;
+            return InteractionResult.PASS;
         });
 
         PlayerBlockBreakEvents.AFTER.register((world, player, pos, state, entity) -> {
@@ -66,8 +59,8 @@ public class BlockTracker {
         return root;
     }
 
-    public static boolean canBreak(BlockPos pos, World world) {
-        String dim = world.getRegistryKey().getValue().toString();
+    public static boolean canBreak(BlockPos pos, Level world) {
+        String dim = world.dimension().identifier().toString();
         synchronized (unrestrictedZones) {
             for (JsonObject zone : unrestrictedZones) {
                 if (!zone.get("dim").getAsString().equals(dim)) continue;
@@ -145,8 +138,8 @@ public class BlockTracker {
         }
     }
 
-    private static String blockKey(BlockPos pos, World world) {
+    private static String blockKey(BlockPos pos, Level world) {
         return pos.getX() + "," + pos.getY() + "," + pos.getZ()
-            + "," + world.getRegistryKey().getValue().toString();
+            + "," + world.dimension().identifier().toString();
     }
 }

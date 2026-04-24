@@ -2,7 +2,6 @@ package slooth.peripheral;
 
 import java.io.*;
 import java.nio.file.*;
-import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -96,22 +95,28 @@ public class ScriptRunner {
             "  state()             -> dict",
             "  inventory()         -> list",
             "  nearby()            -> list",
-            "  look('north')       face a direction (north/south/east/west/up/down)",
-            "  walk(10)            walk 10 blocks forward",
-            "  walk(10, 'north')   walk 10 blocks north",
-            "  goto(x, z)          walk to map coordinates",
-            "  slot(1)             select hotbar slot 1-9",
-            "  equip('cobblestone')  find item in inventory and hold it",
-            "  mine(x, y, z)       start breaking a block",
-            "  place(x, y, z)      right-click / place a block",
+            "  look('north')             face a direction (north/south/east/west/up/down)",
+            "  look(90, -30)             set yaw/pitch directly (yaw: 0=S 90=W 180=N 270=E)",
+            "  jump()                    jump (works when on the ground)",
+            "  sprint(on=True)           toggle sprinting",
+            "  sneak(on=True)            toggle sneaking",
+            "  move(1.0, duration=2)     walk forward for 2 seconds",
+            "  attack()                  left-click at crosshair",
+            "  walk(10)                  walk 10 blocks forward",
+            "  walk(10, 'north')         walk 10 blocks north",
+            "  goto(x, z)                walk to map coordinates",
+            "  slot(1)                   select hotbar slot 1-9",
+            "  equip('cobblestone')      find item in inventory and hold it",
+            "  mine(x, y, z)             start breaking a block",
+            "  place(x, y, z)            right-click / place a block",
             "  place(x,y,z, item='cobblestone')  auto-equip then place",
-            "  drop()              drop 1 of held item",
-            "  drop(all=True)      drop whole stack",
-            "  say('hello')        send chat message",
-            "  msg('hello')        show message to yourself in-game",
-            "  wait(2)             sleep 2 seconds",
-            "  chat_log(20)        list last 20 chat messages",
-            "  wait_for_chat(pat)  block until chat matches pattern (regex)",
+            "  drop()                    drop 1 of held item",
+            "  drop(all=True)            drop whole stack",
+            "  say('hello')              send chat message",
+            "  msg('hello')              show message to yourself in-game",
+            "  wait(2)                   sleep 2 seconds",
+            "  chat_log(20)              list last 20 chat messages",
+            "  wait_for_chat(pat)        block until chat matches pattern (regex)",
             "\"\"\"",
             "import os, json, time, math, urllib.request",
             "",
@@ -272,10 +277,20 @@ public class ScriptRunner {
             "# ── Baritone integration ──────────────────────────────────────────────────────",
             "# Baritone listens for '#' prefixed chat messages and intercepts them before",
             "# they reach the server — so these never appear in public chat.",
+            "# ALL functions below require the Baritone mod:",
+            "#   https://modrinth.com/mod/baritone",
+            "",
+            "def _baritone_check():",
+            "    \"\"\"Raise a clear error if Baritone is not installed.\"\"\"",
+            "    status = _get('/nav_status')",
+            "    if status.get('baritone') == False:",
+            "        raise RuntimeError(",
+            "            'Baritone is not installed. Install it from modrinth.com/mod/baritone'",
+            "        )",
             "",
             "def baritone(command):",
             "    \"\"\"Send any Baritone command. The '#' prefix is added automatically.",
-            "    Requires the Baritone mod to be installed.",
+            "    Requires the Baritone mod — install from modrinth.com/mod/baritone",
             "    Examples:",
             "        baritone('mine diamond_ore')",
             "        baritone('goto 100 64 -200')",
@@ -332,13 +347,113 @@ public class ScriptRunner {
             "def nearby():",
             "    return _get('/state').get('nearby_entities', [])",
             "",
-            "def look(direction):",
-            "    x, y, z = pos()",
-            "    dx, dy, dz = _DIRS.get(str(direction).lower(), (0, 0, -1))",
-            "    _post('/action', {'type': 'look_at',",
-            "                      'x': x + dx * 10,",
-            "                      'y': y + 1.6 + dy * 10,",
-            "                      'z': z + dz * 10})",
+            "def look(yaw_or_dir, pitch=0):",
+            "    \"\"\"Face a direction or set exact rotation angles.",
+            "    look('north')        face north",
+            "    look('up')           face straight up",
+            "    look(90)             set yaw to 90 (faces west in Minecraft)",
+            "    look(180, -30)       face north, angled 30° upward",
+            "    Yaw:   0=south  90=west  180=north  270=east",
+            "    Pitch: -90=straight up  0=level  90=straight down",
+            "    \"\"\"",
+            "    _DIR_ANGLES = {",
+            "        'south': (0, 0), 'west': (90, 0), 'north': (180, 0), 'east': (270, 0),",
+            "        'up':    (0, -90), 'down': (0, 90),",
+            "    }",
+            "    if isinstance(yaw_or_dir, str):",
+            "        yaw, pitch = _DIR_ANGLES.get(yaw_or_dir.lower(), (0, 0))",
+            "    else:",
+            "        yaw = float(yaw_or_dir)",
+            "    _post('/action', {'type': 'look', 'yaw': float(yaw), 'pitch': float(pitch)})",
+            "",
+            "def jump():",
+            "    \"\"\"Make the player jump (only works when on the ground).\"\"\"",
+            "    _post('/action', {'type': 'jump'})",
+            "",
+            "def sprint(on=True):",
+            "    \"\"\"Toggle sprinting on or off. sprint() to start, sprint(False) to stop.\"\"\"",
+            "    _post('/action', {'type': 'sprint', 'on': bool(on)})",
+            "",
+            "def sneak(on=True):",
+            "    \"\"\"Toggle sneaking on or off. sneak() to crouch, sneak(False) to stand.\"\"\"",
+            "    _post('/action', {'type': 'sneak', 'on': bool(on)})",
+            "",
+            "def move(forward, strafe=0, duration=0):",
+            "    \"\"\"Move the player.",
+            "    forward: 1.0=forward  -1.0=backward  0=stop",
+            "    strafe:  1.0=right    -1.0=left",
+            "    duration: seconds to move — if given, blocks until done then stops.",
+            "    With no duration: sets movement and returns immediately.",
+            "      Use move(0) or move(0, 0) to stop.",
+            "    Example:",
+            "      move(1.0, duration=2)   # walk forward 2 seconds",
+            "      sprint(); move(1.0, duration=3); sprint(False)  # sprint forward 3s",
+            "    \"\"\"",
+            "    _post('/action', {'type': 'move', 'forward': float(forward), 'strafe': float(strafe)})",
+            "    if duration > 0:",
+            "        wait(duration)",
+            "        _post('/action', {'type': 'move', 'forward': 0, 'strafe': 0})",
+            "",
+            "def attack():",
+            "    \"\"\"Left-click attack — hits entity or starts breaking block at crosshair.\"\"\"",
+            "    _post('/action', {'type': 'attack'})",
+            "",
+            "def block_at(x, y, z):",
+            "    \"\"\"Get the block at a world position.",
+            "    Returns: {'block': 'minecraft:stone', 'x': 0, 'y': 64, 'z': 0, 'is_air': False}",
+            "    \"\"\"",
+            "    return _get(f'/block?x={int(x)}&y={int(y)}&z={int(z)}')",
+            "",
+            "def targeted_block():",
+            "    \"\"\"Get info about the block the crosshair is pointing at.",
+            "    Returns dict with 'block', 'x', 'y', 'z', 'face', or None if not targeting a block.",
+            "    \"\"\"",
+            "    t = _get('/target')",
+            "    return t if t.get('type') == 'block' else None",
+            "",
+            "def targeted_entity():",
+            "    \"\"\"Get info about the entity the crosshair is pointing at.",
+            "    Returns dict with 'entity_type', 'x', 'y', 'z', 'health', 'distance', or None.",
+            "    \"\"\"",
+            "    t = _get('/target')",
+            "    return t if t.get('type') == 'entity' else None",
+            "",
+            "def status_effects():",
+            "    \"\"\"Return a list of active status effects.",
+            "    Each entry: {'id': 'minecraft:speed', 'duration_ticks': 1200, 'amplifier': 0}",
+            "    amplifier: 0 = level I, 1 = level II, etc.",
+            "    \"\"\"",
+            "    return _get('/state').get('effects', [])",
+            "",
+            "def look_at(x, y, z):",
+            "    \"\"\"Turn to face a world coordinate. Yaw/pitch calculated automatically.\"\"\"",
+            "    _post('/action', {'type': 'look_at', 'x': float(x), 'y': float(y), 'z': float(z)})",
+            "",
+            "def look_at_entity(entity_type, max_distance=16):",
+            "    \"\"\"Turn to look at the nearest entity matching the given type.",
+            "    entity_type: partial match, e.g. 'zombie', 'cow', 'creeper', 'player'",
+            "    Returns True if a match was found, False otherwise.",
+            "    \"\"\"",
+            "    r = _post('/action', {'type': 'look_at_entity',",
+            "                          'entity_type': str(entity_type),",
+            "                          'max_distance': float(max_distance)})",
+            "    return r.get('ok', False)",
+            "",
+            "def respawn():",
+            "    \"\"\"Send the respawn packet (only has effect when dead).\"\"\"",
+            "    _post('/action', {'type': 'respawn'})",
+            "",
+            "def armor():",
+            "    \"\"\"Return equipped armor as a dict: {'head': {...}, 'chest': {...}, 'legs': {...}, 'feet': {...}}",
+            "    Each value is an item dict with 'item', 'count', and optionally 'durability_pct'.",
+            "    \"\"\"",
+            "    return _get('/state').get('armor', {})",
+            "",
+            "def offhand():",
+            "    \"\"\"Return the item in the offhand slot.",
+            "    Returns an item dict: {'item': 'minecraft:shield', 'count': 1, 'durability_pct': 95}",
+            "    \"\"\"",
+            "    return _get('/state').get('offhand', {'item': 'empty', 'count': 0})",
             "",
             "def goto(x, z, y=None):",
             "    px, py, pz = pos()",
@@ -432,7 +547,7 @@ public class ScriptRunner {
             "    \"\"\"Open a custom Minecraft GUI screen.",
             "    layout = {'title': 'My Screen', 'w': 300, 'h': 200, 'widgets': [...]}",
             "    \"\"\"",
-            "    _post('/action', {'type': 'open_gui', 'layout': layout})",
+            "    _post('/action', {'type': 'open_gui', 'layout': layout, '_script': _SCRIPT_NAME})",
             "",
             "def gui_update(widget_id, **props):",
             "    \"\"\"Update one widget's properties while the screen is open.",
@@ -539,7 +654,11 @@ public class ScriptRunner {
     }
 
     private static void writeExampleScripts() throws IOException {
-        writeIfMissing("examples/hello_world.py", String.join("\n",
+        // Ensure all example subfolders exist
+        for (String sub : new String[]{"basics", "hud", "gui", "automation", "chat", "advanced"})
+            Files.createDirectories(SCRIPTS_DIR.resolve("examples/" + sub));
+
+        writeIfMissing("examples/basics/hello_world.py", String.join("\n",
             "from mc import *",
             "",
             "# ── Hello World ─────────────────────────────────────────────",
@@ -574,7 +693,7 @@ public class ScriptRunner {
             ""
         ));
 
-        writeIfMissing("examples/auto_eat.py", String.join("\n",
+        writeIfMissing("examples/automation/auto_eat.py", String.join("\n",
             "from mc import *",
             "",
             "# ── Auto Eat ─────────────────────────────────────────────────",
@@ -603,7 +722,7 @@ public class ScriptRunner {
             ""
         ));
 
-        writeIfMissing("examples/auto_mine.py", String.join("\n",
+        writeIfMissing("examples/automation/auto_mine.py", String.join("\n",
             "from mc import *",
             "",
             "# ── Auto Mine ────────────────────────────────────────────────",
@@ -637,7 +756,7 @@ public class ScriptRunner {
             ""
         ));
 
-        writeIfMissing("examples/follow_on_command.py", String.join("\n",
+        writeIfMissing("examples/automation/follow_on_command.py", String.join("\n",
             "from mc import *",
             "import re",
             "",
@@ -667,7 +786,7 @@ public class ScriptRunner {
             ""
         ));
 
-        writeIfMissing("examples/api_server.py", String.join("\n",
+        writeIfMissing("examples/advanced/api_server.py", String.join("\n",
             "from mc import *",
             "",
             "# ── Custom API Server ────────────────────────────────────────",
@@ -716,7 +835,7 @@ public class ScriptRunner {
         ));
 
         // Always overwrite so layout/feature updates reach users on next launch
-        Files.writeString(SCRIPTS_DIR.resolve("examples/armor_hud.py"), String.join("\n",
+        Files.writeString(SCRIPTS_DIR.resolve("examples/hud/armor_hud.py"), String.join("\n",
             "from mc import *",
             "",
             "# ── Armor HUD ─────────────────────────────────────────────────────────────────",
@@ -789,7 +908,7 @@ public class ScriptRunner {
             ""
         ));
 
-        writeIfMissing("examples/welcome_bot.py", String.join("\n",
+        writeIfMissing("examples/automation/welcome_bot.py", String.join("\n",
             "from mc import *",
             "import re",
             "",
@@ -815,7 +934,7 @@ public class ScriptRunner {
         ));
 
         // Always overwrite so updates reach users on next launch
-        Files.writeString(SCRIPTS_DIR.resolve("examples/hud_basics.py"), String.join("\n",
+        Files.writeString(SCRIPTS_DIR.resolve("examples/hud/hud_basics.py"), String.join("\n",
             "from mc import *",
             "",
             "# ── HUD Basics ────────────────────────────────────────────────────────────────",
@@ -924,7 +1043,7 @@ public class ScriptRunner {
             ""
         ));
 
-        Files.writeString(SCRIPTS_DIR.resolve("examples/health_monitor.py"), String.join("\n",
+        Files.writeString(SCRIPTS_DIR.resolve("examples/automation/health_monitor.py"), String.join("\n",
             "from mc import *",
             "",
             "# ── Health Monitor ────────────────────────────────────────────────────────────",
@@ -1006,7 +1125,7 @@ public class ScriptRunner {
             ""
         ));
 
-        Files.writeString(SCRIPTS_DIR.resolve("examples/chat_bot.py"), String.join("\n",
+        Files.writeString(SCRIPTS_DIR.resolve("examples/chat/chat_bot.py"), String.join("\n",
             "from mc import *",
             "import re",
             "",
@@ -1128,7 +1247,7 @@ public class ScriptRunner {
             ""
         ));
 
-        writeIfMissing("examples/clickable_links.py", String.join("\n",
+        writeIfMissing("examples/basics/clickable_links.py", String.join("\n",
             "from mc import *",
             "",
             "# ── Clickable Links in Chat ───────────────────────────────────────────────────",
@@ -1197,7 +1316,7 @@ public class ScriptRunner {
             ""
         ));
 
-        writeIfMissing("examples/custom_gui.py", String.join("\n",
+        writeIfMissing("examples/gui/custom_gui.py", String.join("\n",
             "from mc import *",
             "",
             "# ── Custom In-Game GUI ────────────────────────────────────────────────────────",
@@ -1307,7 +1426,7 @@ public class ScriptRunner {
             ""
         ));
 
-        writeIfMissing("examples/weather_display.py", String.join("\n",
+        writeIfMissing("examples/basics/weather_display.py", String.join("\n",
             "from mc import *",
             "",
             "# ── Real-World Weather in Minecraft ──────────────────────────────────────────",
@@ -1397,7 +1516,7 @@ public class ScriptRunner {
             ""
         ));
 
-        writeIfMissing("examples/web_dashboard.py", String.join("\n",
+        writeIfMissing("examples/advanced/web_dashboard.py", String.join("\n",
             "from mc import *",
             "import json, threading",
             "from http.server import HTTPServer, BaseHTTPRequestHandler",
@@ -1735,6 +1854,7 @@ public class ScriptRunner {
                     running.remove(filename);
                     startTimes.remove(filename);
                     PeripheralHud.clearIfOwner(filename);
+                    ScriptableScreen.clearIfOwner(filename);
                 }
             }, "peripheral-read-" + filename);
             reader.setDaemon(true);
@@ -1755,6 +1875,15 @@ public class ScriptRunner {
 
     public static void stopAll() {
         new ArrayList<>(running.keySet()).forEach(ScriptRunner::stopScript);
+    }
+
+    /** Returns relative paths of all currently running scripts. */
+    public static List<String> listRunningScripts() {
+        return running.entrySet().stream()
+            .filter(e -> e.getValue().isAlive())
+            .map(Map.Entry::getKey)
+            .sorted()
+            .collect(Collectors.toList());
     }
 
     public static boolean isRunning(String filename) {
