@@ -2,6 +2,7 @@ package slooth.peripheral;
 
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 
@@ -46,9 +47,9 @@ class StoreTab {
     private List<String>    submitScripts    = List.of();
     private String          submitPicked     = null;
     private TextFieldWidget submitDescField  = null;
-    private ButtonWidget    submitAnonBtn    = null;
-    private ButtonWidget    submitOkBtn      = null;
-    private ButtonWidget    submitCancelBtn  = null;
+    private ClickableWidget submitAnonBtn    = null;
+    private ClickableWidget submitOkBtn      = null;
+    private ClickableWidget submitCancelBtn  = null;
     private boolean         submitAnon       = false;
     private int             submitListScroll = 0;
     private String          submitStatus     = "";

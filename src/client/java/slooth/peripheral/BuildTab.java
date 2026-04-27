@@ -3,6 +3,7 @@ package slooth.peripheral;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 
@@ -27,8 +28,8 @@ class BuildTab {
     private int             codeTotalLines = 0;
     private TextFieldWidget scriptField    = null;
     private TextFieldWidget chatInput      = null;
-    private ButtonWidget    sendBtn        = null;
-    private ButtonWidget    runBtn         = null;
+    private ClickableWidget sendBtn        = null;
+    private ClickableWidget runBtn         = null;
 
     // Render cache for mouseClicked hit-testing
     private int[] chatFlatMsgIdx = new int[0];
@@ -66,7 +67,7 @@ class BuildTab {
         int hdrY = contentY + PeripheralScreen.BUILD_TOP_H + 2;
         runBtn = PeripheralScreen.btn("Run", divX + 4, hdrY, 40, 10, b -> toggleScript());
         host.widgetAdd(runBtn);
-        ButtonWidget fixBtn = PeripheralScreen.btn("Fix", px + PeripheralScreen.W - 34, hdrY, 30, 10,
+        ClickableWidget fixBtn = PeripheralScreen.btn("Fix", px + PeripheralScreen.W - 34, hdrY, 30, 10,
             b -> sendLogToAI());
         fixBtn.setTooltip(Tooltip.of(Text.literal(
             "Reads the script's log file and sends the last 60 lines to the AI to identify and fix errors.")));

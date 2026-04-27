@@ -2,6 +2,7 @@ package slooth.peripheral;
 
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 
@@ -30,7 +31,7 @@ class ScriptsTab {
     private String          searchQuery  = "";
 
     /** Per-row buttons — removed by reference on rebuild, not by label matching. */
-    private final List<ButtonWidget> scriptRowBtns = new ArrayList<>();
+    private final List<ClickableWidget> scriptRowBtns = new ArrayList<>();
 
     // ── Dialog state ──────────────────────────────────────────────────────────
     private static final int DLG_W = 190, DLG_H = 62, DLG_H_FOLDER = 74;
@@ -40,8 +41,8 @@ class ScriptsTab {
     // ── Rename overlay state ──────────────────────────────────────────────────
     private String          renamingScript  = null;
     private TextFieldWidget renameField     = null;
-    private ButtonWidget    renameOkBtn     = null;
-    private ButtonWidget    renameCancelBtn = null;
+    private ClickableWidget renameOkBtn     = null;
+    private ClickableWidget renameCancelBtn = null;
 
     ScriptsTab(PeripheralScreen host) { this.host = host; }
 
@@ -64,8 +65,8 @@ class ScriptsTab {
         int by = py + PeripheralScreen.H - PeripheralScreen.BH + 6;
         boolean inExamples = currentFolder.toString().replace(java.io.File.separatorChar, '/').startsWith("examples");
 
-        ButtonWidget newBtn    = PeripheralScreen.btn("+ New",    px + 4,  by, 48, 14, b -> createNewScript());
-        ButtonWidget folderBtn = PeripheralScreen.btn("+ Folder", px + 56, by, 56, 14, b -> createNewFolder());
+        ClickableWidget newBtn    = PeripheralScreen.btn("+ New",    px + 4,  by, 48, 14, b -> createNewScript());
+        ClickableWidget folderBtn = PeripheralScreen.btn("+ Folder", px + 56, by, 56, 14, b -> createNewFolder());
         newBtn.active    = !inExamples;
         folderBtn.active = !inExamples;
         host.widgetAdd(newBtn);
@@ -149,7 +150,7 @@ class ScriptsTab {
         }
     }
 
-    private void addRowBtn(ButtonWidget b) {
+    private void addRowBtn(ClickableWidget b) {
         host.widgetAdd(b);
         scriptRowBtns.add(b);
     }

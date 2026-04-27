@@ -4,6 +4,7 @@ import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 
@@ -78,7 +79,7 @@ public class PeripheralScreen extends Screen {
     final BuildTab    buildTab;
 
     // ── Widget tracking ───────────────────────────────────────────────────────
-    private final List<ButtonWidget>    tabBtns    = new ArrayList<>();
+    private final List<ClickableWidget>  tabBtns    = new ArrayList<>();
     private final List<Object>          contentWgt = new ArrayList<>();
 
     public PeripheralScreen() {
@@ -113,7 +114,7 @@ public class PeripheralScreen extends Screen {
         int x = px + 2, y = py + TH;
         for (int i = 0; i < 5; i++) {
             final int tab = i;
-            ButtonWidget b = StyledButton.of(labels[i], x, y, widths[i], TB, btn -> switchTab(tab));
+            ClickableWidget b = StyledButton.of(labels[i], x, y, widths[i], TB, btn -> switchTab(tab));
             tabBtns.add(b);
             addDrawableChild(b);
             x += widths[i] + 2;
@@ -123,8 +124,7 @@ public class PeripheralScreen extends Screen {
     private void buildContent() {
         scriptsTab.cancelRename();
         contentWgt.forEach(w -> {
-            if (w instanceof ButtonWidget b)    remove(b);
-            if (w instanceof TextFieldWidget t) remove(t);
+            if (w instanceof ClickableWidget c) remove(c);
         });
         contentWgt.clear();
 
@@ -152,10 +152,10 @@ public class PeripheralScreen extends Screen {
 
     // ── Widget management (used by tab classes) ───────────────────────────────
 
-    void widgetAdd(ButtonWidget b)    { addDrawableChild(b); contentWgt.add(b); }
-    void widgetAdd(TextFieldWidget f) { addDrawableChild(f); contentWgt.add(f); }
+    void widgetAdd(ClickableWidget b)  { addDrawableChild(b); contentWgt.add(b); }
+    void widgetAdd(TextFieldWidget f)  { addDrawableChild(f); contentWgt.add(f); }
 
-    void widgetRemove(ButtonWidget b) {
+    void widgetRemove(ClickableWidget b) {
         remove(b);
         contentWgt.remove(b);
     }
