@@ -12,6 +12,7 @@ import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.text.HoverEvent;
+import java.net.URI;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -139,8 +140,8 @@ public class PeripheralHttpServer {
         if (client.player == null) { send(ex, 503, err("not_in_game")); return; }
         ClientPlayerEntity player = client.player;
         com.google.gson.JsonArray slots = new com.google.gson.JsonArray();
-        for (int i = 0; i < player.getInventory().main.size(); i++) {
-            JsonObject item = GameStateReader.itemStackToJson(player.getInventory().main.get(i));
+        for (int i = 0; i < player.getInventory().getMainStacks().size(); i++) {
+            JsonObject item = GameStateReader.itemStackToJson(player.getInventory().getMainStacks().get(i));
             item.addProperty("slot", i);
             item.addProperty("slot_type", i < 9 ? "hotbar" : "main");
             slots.add(item);
@@ -334,14 +335,14 @@ public class PeripheralHttpServer {
         for (String ing : fRecipe.ingredients()) needed.merge(ing, 1, Integer::sum);
 
         java.util.Map<String, Integer> ingToSlot = new java.util.LinkedHashMap<>();
-        int invSize = client.player.getInventory().main.size();
+        int invSize = client.player.getInventory().getMainStacks().size();
         for (var entry : needed.entrySet()) {
             String keyword = entry.getKey(); int count = entry.getValue(); int found = 0;
             for (int i = 0; i < invSize; i++) {
-                String id = client.player.getInventory().main.get(i).getItem().toString().replace("minecraft:","").toLowerCase();
+                String id = client.player.getInventory().getMainStacks().get(i).getItem().toString().replace("minecraft:","").toLowerCase();
                 if (id.contains(keyword)) {
                     if (!ingToSlot.containsKey(keyword)) ingToSlot.put(keyword, i);
-                    found += client.player.getInventory().main.get(i).getCount();
+                    found += client.player.getInventory().getMainStacks().get(i).getCount();
                 }
             }
             if (found < count) {
@@ -577,7 +578,7 @@ public class PeripheralHttpServer {
                         if (keyword.isEmpty()) { errMsg.set("no_item_keyword"); break; }
                         var inv = client.player.getInventory();
                         int sel = inv.selectedSlot;
-                        var stacks = inv.main;
+                        var stacks = inv.getMainStacks();
                         // Already in hand?
                         String heldId = stacks.get(sel).getItem().toString().toLowerCase().replace("minecraft:", "");
                         if (heldId.contains(keyword)) { ok.set(true); break; }
@@ -806,9 +807,8 @@ public class PeripheralHttpServer {
             out.append(Text.literal(url).styled(s -> s
                 .withColor(Formatting.AQUA)
                 .withUnderline(true)
-                .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url))
-                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                    Text.literal("Open in browser")))));
+                .withClickEvent(new ClickEvent.OpenUrl(URI.create(url)))
+                .withHoverEvent(new HoverEvent.ShowText(Text.literal("Open in browser")))));
             last = m.end();
         }
         if (last < raw.length())
@@ -865,10 +865,10 @@ public class PeripheralHttpServer {
                        : ce.has("value") ? ce.get("value").getAsString() : "";
             try {
                 style = switch (action) {
-                    case "open_url"          -> style.withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url));
-                    case "run_command"       -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd));
-                    case "suggest_command"   -> style.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, cmd));
-                    case "copy_to_clipboard" -> style.withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD,
+                    case "open_url"          -> style.withClickEvent(new ClickEvent.OpenUrl(URI.create(url)));
+                    case "run_command"       -> style.withClickEvent(new ClickEvent.RunCommand(cmd));
+                    case "suggest_command"   -> style.withClickEvent(new ClickEvent.SuggestCommand(cmd));
+                    case "copy_to_clipboard" -> style.withClickEvent(new ClickEvent.CopyToClipboard(
                                                    ce.has("value") ? ce.get("value").getAsString() : cmd));
                     default -> style;
                 };
@@ -883,8 +883,7 @@ public class PeripheralHttpServer {
                 com.google.gson.JsonElement contents = he.has("contents") ? he.get("contents")
                                                      : he.has("value")    ? he.get("value") : null;
                 if (contents != null)
-                    style = style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                        buildRichText(contents)));
+                    style = style.withHoverEvent(new HoverEvent.ShowText(buildRichText(contents)));
             }
         }
 

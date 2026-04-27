@@ -248,7 +248,7 @@ public class PeripheralClient implements ClientModInitializer {
                             MutableText confirm = Text.literal("§c[Peripheral] Delete §f" + path + " §c?  ")
                                 .append(Text.literal("§c§l[Confirm]")
                                     .styled(s -> s.withClickEvent(
-                                        new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                        new ClickEvent.RunCommand(
                                             "/peripheral delete-confirm " + path))));
                             ctx.getSource().sendFeedback(confirm);
                         });
