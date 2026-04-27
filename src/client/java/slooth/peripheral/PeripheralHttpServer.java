@@ -139,8 +139,8 @@ public class PeripheralHttpServer {
         if (client.player == null) { send(ex, 503, err("not_in_game")); return; }
         ClientPlayerEntity player = client.player;
         com.google.gson.JsonArray slots = new com.google.gson.JsonArray();
-        for (int i = 0; i < player.getInventory().main.size(); i++) {
-            JsonObject item = GameStateReader.itemStackToJson(player.getInventory().main.get(i));
+        for (int i = 0; i < player.getInventory().getMainStacks().size(); i++) {
+            JsonObject item = GameStateReader.itemStackToJson(player.getInventory().getMainStacks().get(i));
             item.addProperty("slot", i);
             item.addProperty("slot_type", i < 9 ? "hotbar" : "main");
             slots.add(item);
@@ -156,7 +156,7 @@ public class PeripheralHttpServer {
         offhand.addProperty("slot", 40); offhand.addProperty("slot_type", "offhand");
         slots.add(offhand);
         JsonObject resp = new JsonObject();
-        resp.add("slots", slots); resp.addProperty("selected_slot", player.getInventory().selectedSlot);
+        resp.add("slots", slots); resp.addProperty("selected_slot", player.getInventory().getSelectedSlot());
         send(ex, 200, GSON.toJson(resp));
     }
 
@@ -334,14 +334,14 @@ public class PeripheralHttpServer {
         for (String ing : fRecipe.ingredients()) needed.merge(ing, 1, Integer::sum);
 
         java.util.Map<String, Integer> ingToSlot = new java.util.LinkedHashMap<>();
-        int invSize = client.player.getInventory().main.size();
+        int invSize = client.player.getInventory().getMainStacks().size();
         for (var entry : needed.entrySet()) {
             String keyword = entry.getKey(); int count = entry.getValue(); int found = 0;
             for (int i = 0; i < invSize; i++) {
-                String id = client.player.getInventory().main.get(i).getItem().toString().replace("minecraft:","").toLowerCase();
+                String id = client.player.getInventory().getMainStacks().get(i).getItem().toString().replace("minecraft:","").toLowerCase();
                 if (id.contains(keyword)) {
                     if (!ingToSlot.containsKey(keyword)) ingToSlot.put(keyword, i);
-                    found += client.player.getInventory().main.get(i).getCount();
+                    found += client.player.getInventory().getMainStacks().get(i).getCount();
                 }
             }
             if (found < count) {
@@ -439,7 +439,7 @@ public class PeripheralHttpServer {
                 switch (type) {
                     case "set_slot" -> {
                         int slot = Math.max(0, Math.min(8, req.has("slot") ? req.get("slot").getAsInt() : 0));
-                        client.player.getInventory().selectedSlot = slot;
+                        client.player.getInventory().setSelectedSlot(slot);
                         client.player.networkHandler.sendPacket(new net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket(slot));
                         ok.set(true);
                     }
@@ -489,7 +489,7 @@ public class PeripheralHttpServer {
                     }
                     case "swap_hands" -> {
                         ScreenHandler sh2 = client.player.currentScreenHandler;
-                        if (sh2 != null) client.interactionManager.clickSlot(sh2.syncId, 36 + client.player.getInventory().selectedSlot, 40, SlotActionType.SWAP, client.player);
+                        if (sh2 != null) client.interactionManager.clickSlot(sh2.syncId, 36 + client.player.getInventory().getSelectedSlot(), 40, SlotActionType.SWAP, client.player);
                         ok.set(true);
                     }
                     case "send_chat" -> {
@@ -512,7 +512,7 @@ public class PeripheralHttpServer {
                                     net.minecraft.server.network.ServerPlayerEntity sp =
                                         srv.getPlayerManager().getPlayer(client.player.getUuid());
                                     if (sp != null) {
-                                        srv.getCommandManager().executeWithPrefix(
+                                        srv.getCommandManager().parseAndExecute(
                                             sp.getCommandSource(), "/" + finalBare);
                                     }
                                 });
@@ -576,8 +576,8 @@ public class PeripheralHttpServer {
                         String keyword = req.has("item") ? req.get("item").getAsString().toLowerCase().replace("minecraft:", "") : "";
                         if (keyword.isEmpty()) { errMsg.set("no_item_keyword"); break; }
                         var inv = client.player.getInventory();
-                        int sel = inv.selectedSlot;
-                        var stacks = inv.main;
+                        int sel = inv.getSelectedSlot();
+                        var stacks = inv.getMainStacks();
                         // Already in hand?
                         String heldId = stacks.get(sel).getItem().toString().toLowerCase().replace("minecraft:", "");
                         if (heldId.contains(keyword)) { ok.set(true); break; }
@@ -586,7 +586,7 @@ public class PeripheralHttpServer {
                         for (int hi = 0; hi < 9; hi++) {
                             String id = stacks.get(hi).getItem().toString().toLowerCase().replace("minecraft:", "");
                             if (id.contains(keyword)) {
-                                inv.selectedSlot = hi;
+                                inv.setSelectedSlot(hi);
                                 client.player.networkHandler.sendPacket(
                                     new net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket(hi));
                                 ok.set(true); found = true; break;
@@ -806,8 +806,8 @@ public class PeripheralHttpServer {
             out.append(Text.literal(url).styled(s -> s
                 .withColor(Formatting.AQUA)
                 .withUnderline(true)
-                .withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url))
-                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                .withClickEvent(new ClickEvent.OpenUrl(java.net.URI.create(url)))
+                .withHoverEvent(new HoverEvent.ShowText(
                     Text.literal("Open in browser")))));
             last = m.end();
         }
@@ -865,10 +865,10 @@ public class PeripheralHttpServer {
                        : ce.has("value") ? ce.get("value").getAsString() : "";
             try {
                 style = switch (action) {
-                    case "open_url"          -> style.withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, url));
-                    case "run_command"       -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd));
-                    case "suggest_command"   -> style.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, cmd));
-                    case "copy_to_clipboard" -> style.withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD,
+                    case "open_url"          -> style.withClickEvent(new ClickEvent.OpenUrl(java.net.URI.create(url)));
+                    case "run_command"       -> style.withClickEvent(new ClickEvent.RunCommand(cmd));
+                    case "suggest_command"   -> style.withClickEvent(new ClickEvent.SuggestCommand(cmd));
+                    case "copy_to_clipboard" -> style.withClickEvent(new ClickEvent.CopyToClipboard(
                                                    ce.has("value") ? ce.get("value").getAsString() : cmd));
                     default -> style;
                 };
@@ -883,7 +883,7 @@ public class PeripheralHttpServer {
                 com.google.gson.JsonElement contents = he.has("contents") ? he.get("contents")
                                                      : he.has("value")    ? he.get("value") : null;
                 if (contents != null)
-                    style = style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                    style = style.withHoverEvent(new HoverEvent.ShowText(
                         buildRichText(contents)));
             }
         }

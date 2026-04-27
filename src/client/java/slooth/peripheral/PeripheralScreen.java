@@ -1,5 +1,6 @@
 package slooth.peripheral;
 
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -112,8 +113,7 @@ public class PeripheralScreen extends Screen {
         int x = px + 2, y = py + TH;
         for (int i = 0; i < 5; i++) {
             final int tab = i;
-            ButtonWidget b = ButtonWidget.builder(Text.literal(labels[i]), btn -> switchTab(tab))
-                .dimensions(x, y, widths[i], TB).build();
+            ButtonWidget b = StyledButton.of(labels[i], x, y, widths[i], TB, btn -> switchTab(tab));
             tabBtns.add(b);
             addDrawableChild(b);
             x += widths[i] + 2;
@@ -170,8 +170,8 @@ public class PeripheralScreen extends Screen {
     void rebuild() { buildContent(); }
 
     /** Factory shortcut — no instance state needed, so it can be static. */
-    static ButtonWidget btn(String label, int x, int y, int w, int h, ButtonWidget.PressAction action) {
-        return ButtonWidget.builder(Text.literal(label), action).dimensions(x, y, w, h).build();
+    static StyledButton btn(String label, int x, int y, int w, int h, ButtonWidget.PressAction action) {
+        return StyledButton.of(label, x, y, w, h, action);
     }
 
     /** Expose textRenderer to tab classes. */
@@ -211,8 +211,8 @@ public class PeripheralScreen extends Screen {
     @Override
     public void render(DrawContext ctx, int mx, int my, float delta) {
         // ── Chrome ────────────────────────────────────────────────────────────
-        ctx.fill(0, 0, width, height, 0x88000000);
-        ctx.fill(px, py, px + W, py + H, C_PANEL);
+        ctx.fill(0, 0, width, height, UiStyle.BG_VEIL);
+        UiDraw.panel(ctx, px, py, W, H);
         ctx.fill(px, py, px + W, py + TH, C_TITLE);
         ctx.drawText(textRenderer, Text.literal("■"), px + 4, py + 3, C_ORANGE, false);
         ctx.drawText(textRenderer, Text.literal("PERIPHERAL"), px + 4 + textRenderer.getWidth("■ "), py + 3, C_WHITE, false);
@@ -266,12 +266,7 @@ public class PeripheralScreen extends Screen {
 
         ctx.fill(px, py, px + W, py + H, 0x88000000);
 
-        ctx.fill(dlgX, dlgY, dlgX + FA_DLG_W, dlgY + FA_DLG_H, C_PANEL);
-        ctx.fill(dlgX,                 dlgY,                 dlgX + FA_DLG_W, dlgY + 1,            C_BORDER);
-        ctx.fill(dlgX,                 dlgY + FA_DLG_H - 1,  dlgX + FA_DLG_W, dlgY + FA_DLG_H,    C_BORDER);
-        ctx.fill(dlgX,                 dlgY,                 dlgX + 1,         dlgY + FA_DLG_H,    C_BORDER);
-        ctx.fill(dlgX + FA_DLG_W - 1,  dlgY,                 dlgX + FA_DLG_W,  dlgY + FA_DLG_H,   C_BORDER);
-        ctx.fill(dlgX + 1, dlgY + 1, dlgX + FA_DLG_W - 1, dlgY + 3, C_ORANGE);
+        UiDraw.dialog(ctx, dlgX, dlgY, FA_DLG_W, FA_DLG_H);
 
         String scriptLabel = fileAccessConfirmPath;
         if (scriptLabel != null && scriptLabel.contains("/"))
@@ -309,7 +304,9 @@ public class PeripheralScreen extends Screen {
     // ── Input ─────────────────────────────────────────────────────────────────
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(Click click, boolean focused) {
+        double mouseX = click.x(), mouseY = click.y();
+        int button = click.button();
         // File-access dialog intercepts all clicks
         if (button == 0 && fileAccessConfirmPath != null) {
             int dlgX = px + (W - FA_DLG_W) / 2;
@@ -343,7 +340,7 @@ public class PeripheralScreen extends Screen {
             case TAB_BUILD   -> buildTab.mouseClicked(mouseX, mouseY, button);
             default          -> false;
         };
-        return handled || super.mouseClicked(mouseX, mouseY, button);
+        return handled || super.mouseClicked(click, focused);
     }
 
     @Override
@@ -359,15 +356,15 @@ public class PeripheralScreen extends Screen {
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
-        if (currentTab == TAB_STORE && storeTab.mouseDragged(mouseX, mouseY, button, dx, dy)) return true;
-        return super.mouseDragged(mouseX, mouseY, button, dx, dy);
+    public boolean mouseDragged(Click click, double dx, double dy) {
+        if (currentTab == TAB_STORE && storeTab.mouseDragged(click.x(), click.y(), click.button(), dx, dy)) return true;
+        return super.mouseDragged(click, dx, dy);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        if (currentTab == TAB_STORE && storeTab.mouseReleased(mouseX, mouseY, button)) return true;
-        return super.mouseReleased(mouseX, mouseY, button);
+    public boolean mouseReleased(Click click) {
+        if (currentTab == TAB_STORE && storeTab.mouseReleased(click.x(), click.y(), click.button())) return true;
+        return super.mouseReleased(click);
     }
 
     @Override public boolean shouldPause() { return false; }

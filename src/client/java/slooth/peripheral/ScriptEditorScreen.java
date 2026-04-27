@@ -1,9 +1,12 @@
 package slooth.peripheral;
 
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.input.CharInput;
+import net.minecraft.client.input.KeyInput;
 import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
@@ -243,10 +246,10 @@ public class ScriptEditorScreen extends Screen {
     // ── Keyboard ──────────────────────────────────────────────────────────────
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        int     key      = keyCode;
-        boolean shift    = (modifiers & GLFW.GLFW_MOD_SHIFT)   != 0;
-        boolean ctrl     = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0;
+    public boolean keyPressed(KeyInput input) {
+        int     key      = input.key();
+        boolean shift    = input.hasShift();
+        boolean ctrl     = input.hasCtrl();
 
         if (ctrl) {
             switch (key) {
@@ -334,16 +337,17 @@ public class ScriptEditorScreen extends Screen {
             }
             case GLFW.GLFW_KEY_PAGE_UP   -> { pageMove(-visLines()); if (!shift) clearSelection(); return true; }
             case GLFW.GLFW_KEY_PAGE_DOWN -> { pageMove(+visLines()); if (!shift) clearSelection(); return true; }
-            case GLFW.GLFW_KEY_ESCAPE    -> { close(); return true; }
+            case GLFW.GLFW_KEY_ESCAPE    -> { this.close(); return true; }
             default -> {}
         }
 
         ensureCursorVisible();
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(input);
     }
 
     @Override
-    public boolean charTyped(char chr, int modifiers) {
+    public boolean charTyped(CharInput input) {
+        char chr = (char) input.codepoint();
         if (chr >= 32 && chr != 127) {
             saveUndo();
             if (hasSelection()) deleteSelection();
@@ -355,7 +359,7 @@ public class ScriptEditorScreen extends Screen {
             ensureCursorVisible();
             return true;
         }
-        return super.charTyped(chr, modifiers);
+        return super.charTyped(input);
     }
 
     // ── Edit operations ───────────────────────────────────────────────────────
@@ -599,7 +603,8 @@ public class ScriptEditorScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(Click click, boolean focused) {
+        double mouseX = click.x(), mouseY = click.y();
         if (mouseX >= editorX && mouseX < px + W - 1 && mouseY >= contentY && mouseY < contentY + contentH) {
             int[] pos  = mouseToDocPos(mouseX, mouseY);
             cursorLine = pos[0];
@@ -612,25 +617,25 @@ public class ScriptEditorScreen extends Screen {
             ensureCursorVisible();
             return true;
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, focused);
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
+    public boolean mouseDragged(Click click, double dx, double dy) {
         if (dragging) {
-            int[] pos  = mouseToDocPos(mouseX, mouseY);
+            int[] pos  = mouseToDocPos(click.x(), click.y());
             cursorLine = pos[0];
             cursorCol  = pos[1];
             blinkTick  = 0;
             return true;
         }
-        return super.mouseDragged(mouseX, mouseY, button, dx, dy);
+        return super.mouseDragged(click, dx, dy);
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    public boolean mouseReleased(Click click) {
         dragging = false;
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(click);
     }
 
     @Override

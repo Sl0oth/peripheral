@@ -1,6 +1,7 @@
 package slooth.peripheral;
 
 import com.google.gson.JsonParser;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -177,8 +178,9 @@ public class BuildPickerScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        double mx = mouseX, my = mouseY;
+    public boolean mouseClicked(Click click, boolean focused) {
+        double mx = click.x(), my = click.y();
+        int button = click.button();
 
         // ── Delete confirmation dialog ────────────────────────────────────────
         if (deleteConfirmName != null) {
@@ -211,7 +213,7 @@ public class BuildPickerScreen extends Screen {
             if (row >= 0) { pickSession(row); return true; }
         }
 
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(click, focused);
     }
 
     private int rowAt(int my) {

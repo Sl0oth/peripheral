@@ -75,12 +75,12 @@ public class PeripheralClient implements ClientModInitializer {
         // ── G → toggle Peripheral GUI ──────────────────────────────────────
         KeyBinding guiKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key.peripheral.open_gui", GLFW.GLFW_KEY_G,
-            "key.categories.gameplay"));
+            KeyBinding.Category.GAMEPLAY));
 
         // ── H → open/close the scriptable script GUI (if a script has loaded one) ──
         KeyBinding scriptGuiKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
             "key.peripheral.open_script_gui", GLFW.GLFW_KEY_H,
-            "key.categories.gameplay"));
+            KeyBinding.Category.GAMEPLAY));
 
         // ── Script hotkeys 1-5 (unbound by default — set in Options > Controls) ──
         KeyBinding[] scriptKeys = new KeyBinding[5];
@@ -88,7 +88,7 @@ public class PeripheralClient implements ClientModInitializer {
             scriptKeys[i] = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.peripheral.script_" + (i + 1),
                 GLFW.GLFW_KEY_UNKNOWN,
-                "key.categories.gameplay"));
+                KeyBinding.Category.GAMEPLAY));
         }
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -248,7 +248,7 @@ public class PeripheralClient implements ClientModInitializer {
                             MutableText confirm = Text.literal("§c[Peripheral] Delete §f" + path + " §c?  ")
                                 .append(Text.literal("§c§l[Confirm]")
                                     .styled(s -> s.withClickEvent(
-                                        new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                        new ClickEvent.RunCommand(
                                             "/peripheral delete-confirm " + path))));
                             ctx.getSource().sendFeedback(confirm);
                         });
@@ -308,7 +308,7 @@ public class PeripheralClient implements ClientModInitializer {
 
         // ── Incoming chat → ChatLog (so scripts can read it) ──────────────────
         ClientReceiveMessageEvents.CHAT.register((message, signedMessage, sender, params, receptionTimestamp) -> {
-            String senderName = sender != null ? sender.getName() : "";
+            String senderName = sender != null ? sender.name() : "";
             ChatLog.add("chat", senderName, message.getString());
         });
 
