@@ -48,9 +48,26 @@ config/peripheral.json
 MODRINTH_DESCRIPTION.md
 TODO.md
 
-# peripheral — store server (sensitive backend)
-store-server/
-store_routes_patch.py
+# Retired local feature backups; may contain private data. Never publish.
+.retired/
 
 # UI scratch images
 Ui Examples/
+
+# Disposable pilot client and private local authorization capabilities
+run-pilot-audit/
+run-server/
+testing/fabric/run/
+config/peripheral/local-api.token
+config/peripheral/.local-api-*.tmp
+
+# Persistent private MCP connection key
+config/peripheral/mcp.token
+
+# Local tooling, test output and release builds
+.claude/
+.claire/
+audit/
+release/
+net/
+__pycache__/

@@ -1,0 +1,31 @@
+Peripheral logo — 2026-10-26
+
+Manually composed from two existing Phosphor Icons assets. No AI image generation.
+
+Eye Bold:
+https://github.com/phosphor-icons/core/blob/main/assets/bold/eye-bold.svg
+https://raw.githubusercontent.com/phosphor-icons/core/main/assets/bold/eye-bold.svg
+
+Terminal Bold:
+https://github.com/phosphor-icons/core/blob/main/assets/bold/terminal-bold.svg
+https://raw.githubusercontent.com/phosphor-icons/core/main/assets/bold/terminal-bold.svg
+
+Original SVG files are preserved in sources/.
+Both assets: MIT License, Copyright (c) 2023 Phosphor Icons.
+Full license: sources/LICENSE-phosphor.txt. Retain it with redistributed artwork.
+
+Changes: removed the eye's original circular pupil, inserted the existing terminal
+path at half scale, centered the composition, and applied Peripheral UI colors.
+Lime #C7EF88: PeripheralUi.LIME.
+Gray #303030: RGB of PeripheralUi.OUTER, made fully opaque for the logo.
+Palette source: src/client/java/slooth/peripheral/ui/PeripheralUi.java.
+
+peripheral-logo.svg: editable master, charcoal square background.
+peripheral-logo-1024.png: final high-resolution image.
+peripheral-logo-256.png: mod-icon-size export.
+peripheral-logo-64.png and -32.png: small-size exports.
+peripheral-logo-transparent.svg and -1024.png: transparent mark.
+size-check.png: 256/64/32 px inspection sheet.
+compose.cjs: reproducible vector composition and raster exports (Sharp).
+
+These are standalone design deliverables. No bundled icon or public listing replaced.

@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 1,
+	"id": "peripheral-testing",
+	"version": "${version}",
+	"name": "Peripheral Testing",
+	"description": "Lets players use Peripheral's packet tools on this server, for testing it.",
+	"authors": ["Sl0oth"],
+	"contact": { "homepage": "https://modrinth.com/mod/peripheral" },
+	"license": "CC0-1.0",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["slooth.peripheral.testing.PeripheralTesting"]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.2",
+		"fabric-api": "*"
+	}
+}

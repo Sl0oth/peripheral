@@ -3,7 +3,14 @@
 	"package": "slooth.peripheral.mixin.client",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
-		"ExampleClientMixin"
+		"KeyMappingAccess",
+		"KeyMappingMixin",
+		"GameModeMixin",
+		"LocalPlayerMixin",
+		"MouseHandlerAccess",
+		"KeyboardHandlerAccess",
+		"ContainerScreenAccess",
+		"ConnectionMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

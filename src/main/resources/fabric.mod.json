@@ -3,7 +3,7 @@
 	"id": "peripheral",
 	"version": "${version}",
 	"name": "Peripheral",
-	"description": "Script Minecraft with Python. Expose game state over HTTP, run .py scripts with hotkeys, and optionally wire up an AI agent \u2014 all configurable through a clean in-game GUI.",
+	"description": "Script Minecraft with Python. Expose game state over HTTP, run .py scripts with hotkeys, and optionally wire up an AI agent — all configurable through a clean in-game GUI.",
 	"authors": [
 		"Sl0oth"
 	],
@@ -22,14 +22,21 @@
 		]
 	},
 	"depends": {
-		"fabricloader": ">=0.18.4",
-		"minecraft": "~26.1",
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.2",
 		"java": ">=25",
-		"fabric-api": "*"
+		"fabric-api": "*",
+		"panelib": ">=1.0.0-beta.2"
 	},
 	"suggests": {
 		"modmenu": "*",
 		"baritone": "*"
 	},
-	"accessWidener": "peripheral.accesswidener"
+	"accessWidener": "peripheral.accesswidener",
+	"mixins": [
+		{
+			"config": "peripheral.client.mixins.json",
+			"environment": "client"
+		}
+	]
 }

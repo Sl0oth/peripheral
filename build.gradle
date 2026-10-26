@@ -12,6 +12,17 @@ base {
 
 repositories {
 	maven { url "https://api.modrinth.com/maven" }
+	// A local PaneLib build (its build/maven directory) takes precedence while developing against unreleased PaneLib.
+	if (providers.gradleProperty('panelibRepo').isPresent()) {
+		maven {
+			url = uri(providers.gradleProperty('panelibRepo').get())
+			content { includeModule('dev.pane', 'panelib') }
+		}
+	}
+	maven {
+		url = uri('https://sl0oth.github.io/PaneLib/maven/')
+		content { includeModule('dev.pane', 'panelib') }
+	}
 }
 
 loom {
@@ -34,6 +45,11 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// PaneLib draws every Peripheral screen. Bundled, so players need no separate download.
+	def panelib = "dev.pane:panelib:${providers.gradleProperty('panelibVersion').getOrElse(project.panelib_version)}"
+	implementation panelib
+	include panelib
 
 	// Mod Menu — optional; compile-only so the mod works without it installed
 	compileOnly "maven.modrinth:modmenu:${project.modmenu_version}"
@@ -87,3 +103,18 @@ publishing {
 		// retrieving dependencies.
 	}
 }
+
+// Opt-in real-client acceptance harness; never included in a normal build/release.
+if (providers.gradleProperty('pilotTest').isPresent()) {
+    sourceSets.client.java.srcDir('src/auditClient/java')
+    loom.runs.client {
+        runDir 'run-pilot-audit'
+        vmArg '-Dperipheral.pilotTest=true'
+    }
+    // A plain dedicated server with no Peripheral Testing, for checking the packet tools stay off.
+    loom.runs.server {
+        runDir 'run-server'
+    }
+}
+
+processClientResources { exclude "**/__pycache__/**" }

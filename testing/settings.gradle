@@ -1,0 +1,15 @@
+// Peripheral Testing: the server side of Peripheral's packet tools. A server that installs it
+// opts in to players using Peripheral's packet tools on it. Build with ../gradlew -p testing build.
+pluginManagement {
+	repositories {
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+rootProject.name = 'peripheral-testing'
+include 'paper', 'fabric'

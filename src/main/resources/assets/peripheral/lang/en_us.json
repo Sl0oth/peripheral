@@ -1,0 +1,11 @@
+{
+  "key.peripheral.open_gui": "Open Peripheral",
+  "key.peripheral.open_script_gui": "Open script window",
+  "key.peripheral.script_1": "Run script slot 1",
+  "key.peripheral.script_2": "Run script slot 2",
+  "key.peripheral.script_3": "Run script slot 3",
+  "key.peripheral.script_4": "Run script slot 4",
+  "key.peripheral.script_5": "Run script slot 5",
+  "key.peripheral.record": "Start or stop recording",
+  "key.peripheral.play_recording": "Loop or stop the latest recording"
+}

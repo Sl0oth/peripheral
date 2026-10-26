@@ -1,5 +1,24 @@
 package slooth.peripheral;
 
+import slooth.peripheral.api.PeripheralEvents;
+import slooth.peripheral.api.PeripheralHttpServer;
+import slooth.peripheral.api.PeripheralSocketServer;
+import slooth.peripheral.hud.PeripheralHud;
+import slooth.peripheral.overlay.PeripheralOverlay;
+import slooth.peripheral.overlay.PeripheralOverlayRenderer;
+import slooth.peripheral.script.ScriptRunner;
+import slooth.peripheral.ui.BaritoneWarningScreen;
+import slooth.peripheral.ui.BuildSession;
+import slooth.peripheral.ui.PeripheralScreen;
+import slooth.peripheral.ui.PeripheralTheme;
+import slooth.peripheral.ui.ScriptEditorScreen;
+import slooth.peripheral.ui.ScriptableScreen;
+import slooth.peripheral.ui.TermsScreen;
+import slooth.peripheral.util.BlockTracker;
+import slooth.peripheral.util.ChatLog;
+import slooth.peripheral.util.PeripheralConfig;
+import slooth.peripheral.util.PeripheralStateTracker;
+
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.fabricmc.api.ClientModInitializer;
@@ -61,42 +80,53 @@ public class PeripheralClient implements ClientModInitializer {
     public static final String MOD_ID = "peripheral";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
+    private static final KeyMapping[] SCRIPT_KEYS = new KeyMapping[5];
+
+    /** The key bound to script hotkey slot 1–5 as the Controls screen shows it, or "" when unbound. */
+    public static String scriptKeyName(int slot) {
+        KeyMapping key = slot >= 1 && slot <= 5 ? SCRIPT_KEYS[slot - 1] : null;
+        return key == null || key.isUnbound() ? "" : key.getTranslatedKeyMessage().getString();
+    }
+
     private static final HttpClient HTTP = HttpClient.newHttpClient();
 
+    private static long connectionGeneration;
     @Override
     public void onInitializeClient() {
         LOGGER.info("[Peripheral] Starting…");
 
         PeripheralConfig.load();
+        PeripheralTheme.loadCustom();
         BlockTracker.register();
         ScriptRunner.init();
         PeripheralHttpServer.start();
+        PeripheralSocketServer.start();
 
         // ── G → toggle Peripheral GUI ──────────────────────────────────────
         KeyMapping guiKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
             "key.peripheral.open_gui", GLFW.GLFW_KEY_G,
-            net.minecraft.client.KeyMapping.Category.GAMEPLAY));
+            KeyMapping.Category.GAMEPLAY));
 
         // ── H → open/close the scriptable script GUI (if a script has loaded one) ──
         KeyMapping scriptGuiKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
             "key.peripheral.open_script_gui", GLFW.GLFW_KEY_H,
-            net.minecraft.client.KeyMapping.Category.GAMEPLAY));
+            KeyMapping.Category.GAMEPLAY));
 
         // ── Script hotkeys 1-5 (unbound by default — set in Options > Controls) ──
-        KeyMapping[] scriptKeys = new KeyMapping[5];
+        KeyMapping[] scriptKeys = SCRIPT_KEYS;
         for (int i = 0; i < 5; i++) {
             scriptKeys[i] = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.peripheral.script_" + (i + 1),
                 GLFW.GLFW_KEY_UNKNOWN,
-                net.minecraft.client.KeyMapping.Category.GAMEPLAY));
+                KeyMapping.Category.GAMEPLAY));
         }
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // GUI toggle
             while (guiKey.consumeClick()) {
                 if (client.player == null) break;
-                if (client.screen instanceof PeripheralScreen) {
-                    client.setScreen(null);
+                if (client.gui.screen() instanceof PeripheralScreen) {
+                    client.gui.setScreen(null);
                     break;
                 }
                 // Show terms first if not yet accepted — on accept it opens PeripheralScreen
@@ -107,25 +137,25 @@ public class PeripheralClient implements ClientModInitializer {
                         (!hasBaritone && !PeripheralConfig.baritoneWarnDismissed)
                         ? new BaritoneWarningScreen(new PeripheralScreen())
                         : new PeripheralScreen();
-                    client.setScreen(new TermsScreen(target));
+                    client.gui.setScreen(new TermsScreen(target));
                     break;
                 }
                 boolean hasBaritone = net.fabricmc.loader.api.FabricLoader
                     .getInstance().isModLoaded("baritone");
                 if (!hasBaritone && !PeripheralConfig.baritoneWarnDismissed) {
-                    client.setScreen(new BaritoneWarningScreen(new PeripheralScreen()));
+                    client.gui.setScreen(new BaritoneWarningScreen(new PeripheralScreen()));
                 } else {
-                    client.setScreen(new PeripheralScreen());
+                    client.gui.setScreen(new PeripheralScreen());
                 }
             }
 
             // Script GUI toggle (H)
             while (scriptGuiKey.consumeClick()) {
                 if (client.player == null) break;
-                if (client.screen instanceof ScriptableScreen) {
-                    client.setScreen(null);
+                if (client.gui.screen() instanceof ScriptableScreen) {
+                    client.gui.setScreen(null);
                 } else if (ScriptableScreen.hasLayout()) {
-                    client.setScreen(new ScriptableScreen());
+                    client.gui.setScreen(new ScriptableScreen());
                 }
             }
 
@@ -140,33 +170,41 @@ public class PeripheralClient implements ClientModInitializer {
                                     "[Peripheral] Script slot " + (i + 1) + " is empty. Assign it in the Scripts tab."));
                     } else {
                         ScriptRunner.toggle(filename);
-                        PeripheralStateTracker.pushLog(null, null,
-                            "SCRIPT " + (ScriptRunner.isRunning(filename) ? "started: " : "stopped: ") + filename, -1);
+                        PeripheralStateTracker.pushScriptLog(
+                            "SCRIPT " + (ScriptRunner.isRunning(filename) ? "started: " : "stopped: ") + filename);
                     }
                 }
             }
 
             // Drive A* navigator
             PeripheralNavigator.INSTANCE.tick(client);
+
+            // Push tick / health / death events to socket subscribers
+            slooth.peripheral.script.ScriptActions.tick();
+            PeripheralEvents.clientTick(client);
         });
 
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+            connectionGeneration++; ScriptRunner.worldGeneration++; ScriptRunner.sessionOpen=false; ScriptRunner.stopAll();
+            slooth.peripheral.script.ScriptActions.clear(); PeripheralSocketServer.stop(); PeripheralHttpServer.stop(); slooth.peripheral.api.LocalApiSecurity.stop();
+        });
+        ClientPlayConnectionEvents.DISCONNECT.register((handler,client) -> {
+            connectionGeneration++; ScriptRunner.worldGeneration++; ScriptRunner.sessionOpen=false; ScriptRunner.stopAll(); slooth.peripheral.script.ScriptActions.clear();
+            slooth.peripheral.net.PacketTools.disconnected();
+            slooth.peripheral.record.Recorder.stopPlayback("Playback stopped: you left the world.");
+        });
         // ── Auto-run scripts on world / server join ────────────────────────────
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
-            // Small delay so the world is fully loaded before scripts start
-            Thread autorun = new Thread(() -> {
-                try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
-                boolean singleplayer = client.hasSingleplayerServer();
-                String targetMode = singleplayer ? "world" : "multi";
-                for (String relPath : ScriptRunner.listAllScripts()) {
-                    String mode = PeripheralConfig.getAutoRun(relPath);
-                    if (mode.equals(targetMode) || mode.equals("both")) {
-                        ScriptRunner.runScript(relPath);
-                        LOGGER.info("[Peripheral] Auto-started: {} (mode={})", relPath, mode);
-                    }
-                }
-            }, "peripheral-autorun");
-            autorun.setDaemon(true);
-            autorun.start();
+            ScriptRunner.sessionOpen=true; ScriptRunner.worldGeneration++;
+            long generation=++connectionGeneration;
+            Thread.ofPlatform().daemon().name("peripheral-autorun").start(() -> {
+                try { Thread.sleep(2000); } catch(InterruptedException e) { Thread.currentThread().interrupt(); return; }
+                client.execute(() -> {
+                    if(generation!=connectionGeneration || client.player==null)return;
+                    String mode=client.hasSingleplayerServer()?"world":"multi";
+                    for(String name:ScriptRunner.listAllScripts()) if(PeripheralConfig.getAutoRun(name).equals(mode) || PeripheralConfig.getAutoRun(name).equals("both"))ScriptRunner.runScript(name);
+                });
+            });
         });
 
         // ── /peripheral commands ───────────────────────────────────────────────
@@ -203,7 +241,7 @@ public class PeripheralClient implements ClientModInitializer {
                         String path = StringArgumentType.getString(ctx, "path");
                         Minecraft mc = ctx.getSource().getClient();
                         mc.execute(() -> {
-                            if (!Files.exists(ScriptRunner.SCRIPTS_DIR.resolve(path))) {
+                            if (!slooth.peripheral.script.ScriptPaths.exists(path)) {
                                 ctx.getSource().sendFeedback(Component.literal(
                                     "§c[Peripheral] Script not found: §f" + path));
                                 return;
@@ -249,7 +287,7 @@ public class PeripheralClient implements ClientModInitializer {
                     .executes(ctx -> {
                         String path = StringArgumentType.getString(ctx, "path");
                         ctx.getSource().getClient().execute(() -> {
-                            if (!Files.exists(ScriptRunner.SCRIPTS_DIR.resolve(path))) {
+                            if (!slooth.peripheral.script.ScriptPaths.exists(path)) {
                                 ctx.getSource().sendFeedback(Component.literal(
                                     "§c[Peripheral] Script not found: §f" + path));
                                 return;
@@ -271,7 +309,8 @@ public class PeripheralClient implements ClientModInitializer {
                     .executes(ctx -> {
                         String path = StringArgumentType.getString(ctx, "path");
                         ctx.getSource().getClient().execute(() -> {
-                            java.nio.file.Path target = ScriptRunner.SCRIPTS_DIR.resolve(path);
+                            if(!slooth.peripheral.script.ScriptPaths.exists(path)) { ctx.getSource().sendFeedback(Component.literal("[Peripheral] Choose a file inside the scripts folder.")); return; }
+                            java.nio.file.Path target = slooth.peripheral.script.ScriptPaths.resolve(path);
                             if (!Files.exists(target)) {
                                 ctx.getSource().sendFeedback(Component.literal(
                                     "§c[Peripheral] Script not found: §f" + path));
@@ -299,12 +338,12 @@ public class PeripheralClient implements ClientModInitializer {
                         String path = StringArgumentType.getString(ctx, "path");
                         Minecraft mc = ctx.getSource().getClient();
                         mc.execute(() -> {
-                            if (!Files.exists(ScriptRunner.SCRIPTS_DIR.resolve(path))) {
+                            if (!slooth.peripheral.script.ScriptPaths.exists(path)) {
                                 ctx.getSource().sendFeedback(Component.literal(
                                     "§c[Peripheral] Script not found: §f" + path));
                                 return;
                             }
-                            mc.setScreen(new ScriptEditorScreen(new PeripheralScreen(), path));
+                            mc.gui.setScreen(new ScriptEditorScreen(new PeripheralScreen(), path));
                         });
                         return 1;
                     })));
@@ -315,6 +354,9 @@ public class PeripheralClient implements ClientModInitializer {
         // ── HUD overlay ───────────────────────────────────────────────────────
         PeripheralOverlay.register();
         PeripheralHud.register();
+        slooth.peripheral.record.Recorder.register();
+        slooth.peripheral.net.PacketHud.register();
+        PeripheralOverlayRenderer.register();
 
         // ── Incoming chat → ChatLog (so scripts can read it) ──────────────────
         ClientReceiveMessageEvents.CHAT.register((message, signedMessage, sender, params, receptionTimestamp) -> {
@@ -340,6 +382,10 @@ public class PeripheralClient implements ClientModInitializer {
             return false;
         });
 
+        if(Boolean.getBoolean("peripheral.pilotTest")) {
+            try { Class.forName("slooth.peripheral.audit.PilotAcceptance").getMethod("init").invoke(null); }
+            catch(ReflectiveOperationException e) { throw new IllegalStateException("Acceptance harness is unavailable",e); }
+        }
         LOGGER.info("[Peripheral] Ready. HTTP :{} | G to open GUI", PeripheralHttpServer.PORT);
     }
 

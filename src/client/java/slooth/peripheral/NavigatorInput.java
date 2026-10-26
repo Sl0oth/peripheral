@@ -23,12 +23,17 @@ public class NavigatorInput extends ClientInput {
     volatile boolean overriding = false;
 
     // Script action overrides (jump/sprint/sneak/move)
-    volatile float   scriptForward   = 0f;
-    volatile float   scriptStrafe    = 0f;
-    volatile boolean scriptSprint    = false;
-    volatile boolean scriptSneak     = false;
-    volatile boolean scriptJump      = false;   // consumed after one tick
-    volatile boolean scriptOverriding = false;
+    public volatile float   scriptForward   = 0f;
+    public volatile float   scriptStrafe    = 0f;
+    public volatile boolean scriptSprint    = false;
+    public volatile boolean scriptSneak     = false;
+    public volatile boolean scriptJump      = false;   // consumed after one tick
+    public volatile boolean scriptOverriding = false;
+
+    // Recorder playback: the exact keys and move vector for this tick, ahead of everything else
+    public volatile boolean replaying = false;
+    public volatile Input replayKeys = Input.EMPTY;
+    public volatile Vec2 replayMove = Vec2.ZERO;
 
     public NavigatorInput(ClientInput original) {
         this.original = original;
@@ -38,7 +43,10 @@ public class NavigatorInput extends ClientInput {
     public void tick() {
         original.tick();
 
-        if (overriding) {
+        if (replaying) {
+            this.keyPresses = replayKeys;
+            this.moveVector = replayMove;
+        } else if (overriding) {
             // Navigator takes full control
             this.keyPresses = new Input(
                 navForward > 0,   // forward
@@ -58,6 +66,7 @@ public class NavigatorInput extends ClientInput {
             boolean left  = scriptStrafe < 0;
             boolean jump  = scriptJump;
             scriptJump = false;  // consume jump after one tick
+            scriptOverriding = scriptForward != 0 || scriptStrafe != 0 || scriptSneak || scriptSprint;
             this.keyPresses = new Input(fwd, back, left, right, jump, scriptSneak, scriptSprint);
             this.moveVector = new Vec2(scriptStrafe, scriptForward);
         } else {

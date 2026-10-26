@@ -1,0 +1,7 @@
+name: PeripheralTesting
+version: '${version}'
+main: slooth.peripheral.testing.PeripheralTesting
+api-version: '1.21'
+description: Lets players use Peripheral's packet tools on this server, for testing it.
+authors: [Sl0oth]
+website: https://modrinth.com/mod/peripheral

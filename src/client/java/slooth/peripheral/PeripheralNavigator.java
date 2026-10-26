@@ -34,8 +34,11 @@ public class PeripheralNavigator {
 
     // ── Public API ────────────────────────────────────────────────────────────
 
+    private long generation;
     public void navigateTo(int x, int y, int z, int tol) {
+        final long request;
         synchronized (lock) {
+            request = ++generation;
             goalX = x; goalY = y; goalZ = z; tolerance = tol;
             status = NavStatus.PLANNING;
             failReason = "";
@@ -53,7 +56,7 @@ public class PeripheralNavigator {
                 int sz = (int) Math.floor(client.player.getZ());
                 List<int[]> found = astar(client, sx, sy, sz, x, y, z, 150_000);
                 synchronized (lock) {
-                    if (status != NavStatus.PLANNING) return;
+                    if (request != generation || status != NavStatus.PLANNING) return;
                     if (found == null || found.isEmpty()) { fail("no_path_found"); return; }
                     path = found;
                     wpIdx = 0;
@@ -63,7 +66,7 @@ public class PeripheralNavigator {
                     client.execute(() -> installInput(client));
                 }
             } catch (Exception e) {
-                fail(e.getClass().getSimpleName() + ": " + e.getMessage());
+                synchronized (lock) { if (request == generation) fail(e.getClass().getSimpleName() + ": " + e.getMessage()); }
             }
         }, "peripheral-astar");
         t.setDaemon(true);
@@ -72,6 +75,7 @@ public class PeripheralNavigator {
 
     public void stop() {
         synchronized (lock) {
+            generation++;
             status = NavStatus.IDLE;
             failReason = "";
             path = Collections.emptyList();
@@ -160,7 +164,7 @@ public class PeripheralNavigator {
         if (client.player == null) return;
         if (client.player.input instanceof NavigatorInput ni) {
             ni.overriding = false; ni.navForward = 0f; ni.navJump = false;
-            client.player.input = ni.getOriginal();
+            if (!ni.scriptOverriding) client.player.input = ni.getOriginal();
         }
     }
 

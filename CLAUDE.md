@@ -1,0 +1,136 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this project is
+
+**Peripheral** is a Fabric Minecraft mod (MC 26.2) that exposes game state over a local HTTP API so Python scripts can read and control the game. It ships an in-game control panel, a scriptable overlay GUI, a HUD overlay system.
+
+## Build & run commands
+
+```bash
+# Run Minecraft client with the mod loaded (primary dev command)
+./gradlew runClient
+
+# Compile only (check for errors without launching)
+./gradlew compileClientJava
+
+# Full build (produces a distributable JAR)
+./gradlew build
+```
+
+**Java 25 is required.** The toolchain is pinned in `build.gradle` (`JavaLanguageVersion.of(25)`). On macOS use the Zulu JDK 25 distribution — the IntelliJ run configuration expects a JDK named `zulu-25`.
+
+There are no automated tests.
+
+## Architecture
+
+### Startup sequence
+
+`PeripheralClient.onInitializeClient()` is the single entry point (still in package `slooth.peripheral`). It runs in order:
+1. `PeripheralConfig.load()` — reads/writes `config/peripheral.json`
+2. `ScriptRunner.init()` — prepares the scripts directory, writes example scripts and docs
+3. `PeripheralHttpServer.start()` — starts `localhost:25585` with a 4-thread pool
+4. `PeripheralSocketServer.start()` — starts the event socket on `localhost:25587` (config key `socket_port`)
+5. Key bindings registered: **G** opens `PeripheralScreen`, **H** opens `ScriptableScreen`, keys 1–5 are script hotkeys
+
+### Package layout
+
+Entrypoints (`PeripheralClient`, `PeripheralModMenuApi`) and the small
+`PeripheralNavigator`/`NavigatorInput` pair stay in the root `slooth.peripheral`
+package (do **not** move them — `fabric.mod.json` and the `mixin/` packages
+reference the root). Everything else is grouped:
+
+| Package | Classes |
+|---|---|
+| `slooth.peripheral.api` | `PeripheralApi`, `PeripheralHttpServer`, `PeripheralSocketServer`, `PeripheralEvents` |
+| `slooth.peripheral.script` | `ScriptRunner` |
+| `slooth.peripheral.ui` | all `*Screen` classes, `PeripheralTheme`, `Anim`, `BuildSession` |
+| `slooth.peripheral.hud` | `PeripheralHud` |
+| `slooth.peripheral.overlay` | `PeripheralOverlay`, `PeripheralOverlayRenderer` |
+| `slooth.peripheral.util` | `ChatLog`, `BlockTracker`, `GameStateReader`, `PeripheralStateTracker`, `PeripheralConfig` |
+
+### The API dispatch is the seam between Java and Python
+
+`PeripheralApi.handle(method, params)` is the single dispatch point for every
+scriptable capability. Both transports delegate to it:
+- **HTTP** (`PeripheralHttpServer`, `localhost:25585`) — the compatibility path.
+- **Socket** (`PeripheralSocketServer`, `localhost:25587`) — newline-delimited
+  JSON. Requests are `{"id", "method", "params"}` → `{"id", "result"}` /
+  `{"id", "error"}`. A connection can also `subscribe` to pushed events.
+
+`mc.py` tries the socket first (`PERIPHERAL_SOCKET_PORT`) and silently falls
+back to HTTP. When adding a new scriptable capability:
+- Add a `case` in `PeripheralApi.handle` (both transports pick it up automatically)
+- Add the Python wrapper in the canonical `src/client/resources/peripheral/mc.py` **and** copy it to `run/config/peripheral/scripts/mc.py`
+- Document it in the canonical `src/client/resources/peripheral/AI_PROMPT.md` and `PERIPHERAL_API.md` (and copy those to `run/config/...`)
+
+Key methods/endpoints: `state` (game snapshot), `action` (all player actions),
+`gui` (scriptable GUI poll — **pops one event per call**), `inventory`, `goto`,
+`find_blocks`, `notify`, `play_sound`.
+
+### Event bus + push callbacks
+
+`PeripheralEvents.emit(type, data)` is a static event bus. `PeripheralSocketServer`
+registers each subscribed connection with it and pushes `{"event", "data"}`
+frames. Emitters exist for `chat`, `gui`, `tick` (rate-limited per connection by
+`state_hz`), `health`, and `death`. On the Python side these surface as the
+`@on_chat` / `@on_gui` / `@on_tick` / `@on_death` / `@on_health` decorators plus
+`every(seconds, fn)` and `run()`. Callbacks all run on one dispatcher thread, so
+use the event payload or a single snapshot; current `gui_input()` reads through non-consuming `gui_peek` (older versions consumed events).
+
+### Script execution model
+
+`ScriptRunner` launches each script as an external `python3` process in a daemon thread. Scripts receive the HTTP port, scripts directory, and API credentials via environment variables (`PERIPHERAL_STATE_PORT`, `PERIPHERAL_SCRIPTS_DIR`, etc.). stdout/stderr are captured to `<script>.log` and forwarded to the in-game Log tab. The `finally` block in the reader thread is where cleanup on script exit happens — that's where `PeripheralHud.clearIfOwner` and `ScriptableScreen.clearIfOwner` are called.
+
+### `mc.py` and docs are classpath resources
+
+`mc.py`, `AI_PROMPT.md`, and `PERIPHERAL_API.md` are **classpath resources** under
+`src/client/resources/peripheral/`. `ScriptRunner` copies them into the scripts
+directory on every launch: `mc.py` and `AI_PROMPT.md` are always overwritten;
+`PERIPHERAL_API.md` is written only if missing. To change any of them:
+1. Edit the canonical file in `src/client/resources/peripheral/`.
+2. Copy the result over the matching `run/config/peripheral/scripts/` file so the dev environment matches without a relaunch.
+
+The `_SCRIPT_NAME` variable in `mc.py` is always available from
+`os.environ.get('PERIPHERAL_SCRIPT_NAME', '')`. Scripts also receive
+`PERIPHERAL_SOCKET_PORT` in their process env.
+
+### Themes
+
+`PeripheralTheme.current()` returns the active theme (config key `theme`,
+default `terminal`; `vanilla` is the other built-in). Custom themes are JSON
+files in `config/peripheral/themes/<name>.json` (role → `"#AARRGGBB"`), loaded at
+startup and picked by filename. UI classes read colors from theme roles rather
+than hardcoded constants; an `open_gui` layout may carry a top-level `theme` to
+override just that `ScriptableScreen`. `Anim` provides the eased hover/scroll
+transitions.
+
+### Rendering: PaneLib and native game overlays
+
+Application screens extend PaneLib's `UiScreen` (`dev.pane:panelib` from Maven, bundled with Loom `include`; `-PpanelibRepo=<dir> -PpanelibVersion=<v>` builds against a local PaneLib checkout). Use `PeripheralUi` for shared fonts, colors, document scaling and raster settings. **Use PaneLib's own controls instead of hand-drawing them**: `ui.button(id, label, UiIcon…, …)` for icon buttons, `ui.menuButton(…, icon, …)` for menus, `ui.iconButton` with a label, `screen.showDialog(id, new UiDialog(…, PeripheralUi.DANGER_DIALOG))` for confirmations, `pushFocusScope` + `ui.textField` + `requestFocus(id, anchor, cursor)` for custom sheets like rename, `UiScrollFollow.WHEN_AT_END` with `scrollToEnd`/`scrollAtEnd`/`scrollOffset` for logs. If PaneLib can't do something cleanly, add it to PaneLib (with tests) rather than working around it here, and keep the addition small and easy to use. Scroll positions are not `scroll:<id>` values any more; use `scrollTo`/`scrollSnapshot`. Keep the Scripts design (`ScriptsPanel`, charcoal with lime for Run and the current item) consistent. `LineEdit` remains only in `ScriptableScreen` (script-authored inputs) and is still to be replaced by PaneLib text input.
+
+Native Minecraft items and world HUD editing still use `GuiGraphicsExtractor` in the screen's native overlay hooks. Scriptable layouts retain Minecraft GUI coordinates through a scale transform; do not silently reinterpret author coordinates or explicit theme/color choices. Popup overlays must remain above native item sprites.
+
+### ScriptableScreen widget system
+
+`ScriptableScreen` is a JSON-driven GUI that Python scripts build at runtime via `open_gui(layout)`. Key design details:
+- All widget state lives in `widgetMap` (a `ConcurrentHashMap<String, JsonObject>`). The render thread reads it under `synchronized(widgetOrder)`; the HTTP thread writes via `update()` which also holds that lock.
+- `openDropdownId` tracks which dropdown popup is open; the popup is rendered last (after `super.extractRenderState`) so it floats above everything.
+- Tabs work via a `'tab': 'tab_id'` property on any widget. `buildActiveTabs()` collects currently-selected tab IDs; `isTabVisible()` gates rendering and mouse handling.
+- Each `GET /gui` / `gui_state()` / `gui_poll()` call pops one event. Use one snapshot for event and input values. `GET /gui_peek` / `gui_peek()` reads open/inputs without consuming events; `gui_input()` and `gui_is_open()` use this safe path in 1.3.1. Older helper versions consumed events, so keep existing handlers on the single-snapshot recipe.
+- `clearIfOwner(scriptName)` closes the screen and wipes the layout when the owning script stops.
+
+### PeripheralScreen tabs
+
+`PeripheralScreen` has four PaneLib tabs (Scripts, Log, Build, Settings); Scripts is the default. The Scripts tab is `ScriptsPanel`: library, selected script (Run/Stop, Edit, auto-run, hotkey slot, More) and its output. Rename/delete/new sheets stay in `PeripheralScreen`, which the panel reaches through ordinary actions (`rename:`, `del:`, `edit:`, `new-script`, `new-folder`). The retired standalone Workspace screen is kept in `.retired/workspace-2026-10-25/`. Build uses `BuildSession` and `BuildPickerScreen`; opening a session must not send a prompt. The system prompt reads bundled `peripheral/AI_PROMPT.md`; keep the guide aligned with public APIs instead of adding a duplicate Java reference. Explicit Send snapshots existing nonempty source with `BuildDraftSafety` before dispatch. `UnsavedChangesScreen` protects editor changes when leaving.
+
+### Config & persistence
+
+| What | Where |
+|---|---|
+| Mod config (API keys, URLs) | `config/peripheral.json` via `PeripheralConfig` |
+| Chat/build session history | `config/peripheral/chats/<script>.json` |
+| HUD position overrides (edit mode) | `config/peripheral/hud_layouts.json` (`{script: {elementId: {x, y, anchor}}}`) |
+| Custom themes | `config/peripheral/themes/<name>.json` |
+| Script auto-run settings | within `config/peripheral.json` |

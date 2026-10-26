@@ -1,5 +1,7 @@
 package slooth.peripheral;
 
+import slooth.peripheral.ui.PeripheralScreen;
+
 import com.terraformersmc.modmenu.api.ConfigScreenFactory;
 import com.terraformersmc.modmenu.api.ModMenuApi;
 

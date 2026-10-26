@@ -8,7 +8,7 @@ Peripheral ships four JARs targeting different Minecraft version ranges. Each li
 
 | Branch | Worktree | MC range | Mapping system | Mouse/keyboard API |
 |--------|----------|----------|----------------|--------------------|
-| `main` | (root) | 26.1.x | Mojmap | `Click` record + `KeyInput`/`CharInput` |
+| `main` | (root) | 26.2 | Mojmap | `Click` record + `KeyInput`/`CharInput` |
 | `mc/1.21.4` (`sharp-hertz`) | `.claude/worktrees/sharp-hertz` | 1.21.9 – 1.21.11 | Yarn | `Click` record + `KeyInput`/`CharInput` |
 | `mc/1.21.8` | `.claude/worktrees/mc-1-21-8` | 1.21.5 – 1.21.8 | Yarn | Old `(double, double, int)` + `(int, int, int)` |
 | *(detached, mc-1-21-4-orig)* | `.claude/worktrees/mc-1-21-4-orig` | 1.21.0 – 1.21.4 | Yarn | Old `(double, double, int)` + old `ClickEvent` |
@@ -94,6 +94,14 @@ KeyBindingHelper.registerKeyBinding(new KeyBinding("key.id", GLFW.GLFW_KEY_G, Ke
 **mc/1.21.8 / mc-1-21-4-orig:** No `StyledButton` — use `ButtonWidget.builder(...)` directly.
 
 ---
+
+## PaneLib UI (main only)
+
+Since 2026-10-25, `main` targets Minecraft 26.2 and draws every screen with PaneLib
+(`dev.pane:panelib`, bundled). PaneLib supports 26.2 only, so the new UI is not ported to the
+older branches; they keep their vanilla-widget UI. Fixes to scripting, the API and `mc.py` still
+port as below. The last 26.1.x code is the `main` commit before that change.
+The working tree before the switch is archived in `../peripheral-26.1-before-26.2-port-2026-10-25.tar.gz`.
 
 ## Rule: Porting New Features
 

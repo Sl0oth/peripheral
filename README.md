@@ -8,21 +8,22 @@ Write `.py` scripts that read live game data, control your player, build custom 
 
 ## What it does
 
-Peripheral runs a lightweight HTTP server inside Minecraft (`localhost:25585`) and injects a helper module called `mc` into every script. Scripts run in the background as you play — reading your health, sending chat messages, drawing on your screen, or navigating with Baritone.
+Peripheral runs a lightweight HTTP server inside Minecraft (`localhost:25585`) and injects a helper module called `mc` into every script. Scripts run in the background as you play — reading your health, sending chat messages, drawing on your screen, or navigating with the built-in pathfinder.
 
-No extra dependencies. No config files to hand-edit. Everything is managed through a clean in-game GUI (press **G**).
+Python 3 must be installed and available as `python3` (or Python 3 as `python`). No config files to hand-edit. Everything is managed through a clean in-game GUI (press **G**).
 
 ---
 
 ## Features
 
 - **Python scripting** — scripts live in `config/peripheral/scripts/`, edit them in any text editor or in-game
-- **Player control** — `say()` · `look()` · `use_item()` · `equip()` · `jump()` · `sprint()` · `sneak()` · `move()` · `click_block()` · `attack()` · `drop_item()`
+- **Player control** — `say()` · `look()` · `use_item()` · `equip()` · `jump()` · `sprint()` · `sneak()` · `move()` · `place()` · `attack()` · `drop()`
 - **Game data** — `state()` · `pos()` · `health()` · `inventory()` · `chat_log()`
 - **HUD overlays** — persistent labels, bars, rects, and item sprites anchored to any screen corner
 - **Custom in-game screens** — `open_gui()` builds real Minecraft screens from Python (press **H** to show/hide)
 - **AI script builder** — built-in chat interface (Claude / OpenAI) that writes scripts directly to the file
-- **Navigation** — `goto(x, z)` · `baritone()` · `baritone_stop()` (requires Baritone)
+- **Navigation** — `goto(x, z)` uses the built-in pathfinder; optional `baritone()` / `baritone_stop()` require Baritone
+- **Optional MCP server** — off by default; turn it on in Settings › MCP, copy the local authenticated connection, and use Minecraft tools from a compatible AI app. The setting and connection key persist across launches. See [connection details](src/client/resources/peripheral/LOCAL_API.md#optional-mcp-connection).
 - **HTTP API** — every endpoint is also available externally on `localhost:25585`
 
 ---
@@ -64,39 +65,35 @@ while True:
 
 | Script | What it does |
 |---|---|
-| `hello_world.py` | Shows position, health, nearby entities — verify everything works |
-| `armor_hud.py` | Vertical item-icon + durability HUD on the right side of the screen |
-| `auto_eat.py` | Automatically eats food when hunger drops |
-| `auto_mine.py` | Uses Baritone to mine a target ore automatically |
-| `welcome_bot.py` | Greets players when they join |
-| `follow_on_command.py` | Follows a player when they say "follow me" in chat |
-| `chat_bot.py` | Responds to `.commands` in chat with live game data |
-| `custom_gui.py` | Full interactive GUI example — buttons, inputs, live updates |
-| `api_server.py` | Starts a local HTTP server so external apps can read game state |
-| `openai_chat.py` | Players whisper questions to a configured AI API, it answers in chat |
-| `server_status.py` | Pings Minecraft servers and shows player counts and MOTD |
-| `weather_display.py` | Fetches real-world weather and displays it in-game |
-| `web_dashboard.py` | Browser dashboard — view game state from any tab on your local network |
-| `clickable_links.py` | Shows how to send rich messages with clickable URLs and hover text |
+| `basics/welcome.py` | One-shot tour of game state, rich chat, notifications and sounds |
+| `gui/terminal.py` | Local command/log panel: help, position, health, inventory and echo |
+| `hud/trail.py` | Read-only travel HUD with distance from this run's starting point |
+| `hud/dashboard.py` | HUD elements, health/food bars and graph |
+| `gui/control_center.py` | Interactive GUI widget showcase |
+| `chat/commands.py` | Chat commands and waypoints |
+| `overlay/radar.py` | Entity markers and labels |
+| `automation/survival_assistant.py` | Survival event/callback example |
+
 
 ---
 
 ## Getting started
 
-1. Install the mod (Fabric, 1.21.11)
-2. Launch Minecraft — example scripts are written to `config/peripheral/scripts/` automatically
+1. Install this build for Fabric / Minecraft 26.2 (PaneLib, which draws the screens, is included)
+2. Install Python 3 if needed, then launch Minecraft — examples and `PERIPHERAL_API_CURRENT.md` are written to `config/peripheral/scripts/` automatically
 3. Press **G** to open the Peripheral panel
 4. Hit **Run** next to any example script
-5. To write your own: open the **Build** tab, type a script name, and describe what you want
+5. Edit an example or create a `.py` file to make your own tool. **No AI key is needed to run or write scripts.** The optional **Build** tab generates scripts using your own Anthropic/OpenAI API key and provider billing.
 
 ---
 
 ## Requirements
 
-- **Minecraft** 1.21.11
-- **Fabric Loader** 0.18.4+
+- **Minecraft** 26.2 for this checkout
+- **Python 3** available to Minecraft
+- **Fabric Loader** 0.19.3+
 - **Fabric API**
-- **Baritone** *(optional)* — required only for navigation functions
+- **Baritone** *(optional)* — only for functions prefixed `baritone_`, `baritone()` and `mine_auto()`
 
 ---
 
@@ -112,4 +109,16 @@ Provided as-is with no warranty. The author is not liable for loss of items or g
 
 ---
 
-*100% of the mod code was written by [Claude Code](https://claude.ai/code) (Anthropic's AI coding assistant), directed by Sl0oth.*
+*Built with AI coding assistance, directed by Sl0oth.*
+
+## PaneLib interface
+
+Press **G** to open the control panel: **Scripts, Macros, Log, Build, HUD, Settings**. **Scripts** opens first. It shows your script library with folder search next to the picked script's Run/Stop, Edit, auto-run, hotkey slot and live output. In a compact window, picking a script shows its controls and output; **Library** goes back to the list. **Log** shows every line from your scripts and the external agent, filtered by source, with the agent's status, a task box and Stop underneath. **Macros** records what you do (F7) and plays it back exactly, once or on a loop (F8). **HUD** lists what scripts draw on screen and opens PaneLib's HUD editor to move it. **Settings** has sections for AI, Agent, MCP and Appearance. The editor, session picker, dialogs, HUD editor and script-created windows also use PaneLib. Script-authored coordinates, explicit themes and native Minecraft item/HUD rendering are preserved.
+
+Build sends only when you press **Send**. Existing nonempty scripts are backed up under `config/peripheral/build_backups` before generation; leaving an edited document offers Save, Discard or Keep editing. This embeds an isolated PaneLib compatibility snapshot for 26.1.2; the separate PaneLib project is unchanged.
+
+Scripts are trusted local Python programs with your normal computer access. Peripheral does not sandbox Python. The old File Access monkeypatch has been removed. Provider API keys are no longer injected into every script or returned by the local API.
+
+Bundled scripts receive a private local API capability automatically. External tools must explicitly read `config/peripheral/local-api.token` in the running game directory and send `Authorization: Bearer <token>` over HTTP, or a `token` field in each TCP JSON frame. The token changes every session; never publish it, put it in URLs, or reuse a provider key. Browser-origin requests are rejected. The file is created private on POSIX systems. This boundary protects the local API from unauthorized requests; it cannot isolate malicious same-user programs.
+
+Integration findings and remaining library work are tracked in `audit/PANELIB-INTEGRATION-LEDGER.txt`; whole-interface evidence is in `audit/2026-10-17-whole-ui/`. `./gradlew runClient -PpilotTest` runs the opt-in acceptance client in its reserved disposable `run-pilot-audit` directory, never a normal world. Normal builds exclude this harness.
