@@ -79,7 +79,7 @@ while True:
 
 ## Getting started
 
-1. Install this build for Fabric / Minecraft 26.2 (PaneLib, which draws the screens, is included)
+1. Install this build for Fabric / Minecraft 26.2, with Fabric API and PaneLib (which draws the screens)
 2. Install Python 3 if needed, then launch Minecraft — examples and `PERIPHERAL_API_CURRENT.md` are written to `config/peripheral/scripts/` automatically
 3. Press **G** to open the Peripheral panel
 4. Hit **Run** next to any example script
@@ -93,6 +93,7 @@ while True:
 - **Python 3** available to Minecraft
 - **Fabric Loader** 0.19.3+
 - **Fabric API**
+- **PaneLib** 1.0.0-beta.3+ — draws Peripheral's screens
 - **Baritone** *(optional)* — only for functions prefixed `baritone_`, `baritone()` and `mine_auto()`
 
 ---
@@ -115,7 +116,7 @@ Provided as-is with no warranty. The author is not liable for loss of items or g
 
 Press **G** to open the control panel: **Scripts, Macros, Log, Build, HUD, Settings**. **Scripts** opens first. It shows your script library with folder search next to the picked script's Run/Stop, Edit, auto-run, hotkey slot and live output. In a compact window, picking a script shows its controls and output; **Library** goes back to the list. **Log** shows every line from your scripts and the external agent, filtered by source, with the agent's status, a task box and Stop underneath. **Macros** records what you do (F7) and plays it back exactly, once or on a loop (F8). **HUD** lists what scripts draw on screen and opens PaneLib's HUD editor to move it. **Settings** has sections for AI, Agent, MCP and Appearance. The editor, session picker, dialogs, HUD editor and script-created windows also use PaneLib. Script-authored coordinates, explicit themes and native Minecraft item/HUD rendering are preserved.
 
-Build sends only when you press **Send**. Existing nonempty scripts are backed up under `config/peripheral/build_backups` before generation; leaving an edited document offers Save, Discard or Keep editing. This embeds an isolated PaneLib compatibility snapshot for 26.1.2; the separate PaneLib project is unchanged.
+Build sends only when you press **Send**. Existing nonempty scripts are backed up under `config/peripheral/build_backups` before generation; leaving an edited document offers Save, Discard or Keep editing. PaneLib is a separate mod that players install alongside Peripheral.
 
 Scripts are trusted local Python programs with your normal computer access. Peripheral does not sandbox Python. The old File Access monkeypatch has been removed. Provider API keys are no longer injected into every script or returned by the local API.
 

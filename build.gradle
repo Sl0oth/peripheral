@@ -46,10 +46,8 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
-	// PaneLib draws every Peripheral screen. Bundled, so players need no separate download.
-	def panelib = "dev.pane:panelib:${providers.gradleProperty('panelibVersion').getOrElse(project.panelib_version)}"
-	implementation panelib
-	include panelib
+	// PaneLib draws every Peripheral screen. Players install it separately; fabric.mod.json requires it.
+	implementation "dev.pane:panelib:${providers.gradleProperty('panelibVersion').getOrElse(project.panelib_version)}"
 
 	// Mod Menu — optional; compile-only so the mod works without it installed
 	compileOnly "maven.modrinth:modmenu:${project.modmenu_version}"

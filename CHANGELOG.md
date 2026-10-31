@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- Now targets **Minecraft 26.2** (Fabric Loader 0.19.3+, Fabric API 0.157.0+26.2). The screens use the published PaneLib library, bundled inside the jar, instead of a private copy, so PaneLib fixes reach Peripheral directly.
+- Now targets **Minecraft 26.2** (Fabric Loader 0.19.3+, Fabric API 0.157.0+26.2). The screens use the published PaneLib library instead of a private copy, so PaneLib fixes reach Peripheral directly. **PaneLib is now a separate required download**: install PaneLib 1.0.0-beta.3 or newer alongside Peripheral.
 - A script's output now follows the newest line while you're at the bottom. Scroll up to read, and a **Jump to latest** bar brings you back. This replaces the Follow latest switch.
 - Scripts is now the first tab when you press G. It combines the old Scripts list and the separate Workspace screen into one view: the library on the left, and the picked script on the right with Run/Stop, Edit and its live output.
 - You can now set a script's auto-run (off, singleplayer, multiplayer, any world) and its hotkey slot (1–5) from the Scripts tab. Hotkeys could only be set in the config file before. Keys for the slots are still bound in Options › Controls.
