@@ -80,7 +80,7 @@ public class ScriptRunner {
     private static final Map<String, String> outcomes = new ConcurrentHashMap<>();
     private static final Map<String, ArrayDeque<String>> tails = new ConcurrentHashMap<>();
     private static final java.util.concurrent.ScheduledExecutorService WATCHER = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> { Thread t=new Thread(r,"peripheral-process-watch"); t.setDaemon(true); return t; });
-    private static String cachedPython;
+    private static List<String> cachedPython;
     public static volatile String fileAccessRequestScript; // retained for old screen binary/source compatibility
     public static volatile boolean sessionOpen = true;
     public static volatile long worldGeneration;
@@ -161,7 +161,7 @@ public class ScriptRunner {
      */
     public static List<ScriptInfo> listEntries(java.nio.file.Path subdir) {
         try {
-            java.nio.file.Path dir = ScriptPaths.resolve(subdir.toString());
+            java.nio.file.Path dir = ScriptPaths.resolve(subdir.toString().replace(java.io.File.separatorChar, '/'));
             if (!Files.exists(dir)) return Collections.emptyList();
             List<ScriptInfo> result = new ArrayList<>();
             List<java.nio.file.Path> all;
@@ -231,7 +231,8 @@ public class ScriptRunner {
         try {
             Path logFile=ScriptPaths.resolve(name+".log");
             Files.writeString(logFile,"=== Starting "+name+" ===\n",StandardOpenOption.CREATE,StandardOpenOption.TRUNCATE_EXISTING);
-            ProcessBuilder pb=new ProcessBuilder(findPython(),"-u",scriptPath.toString());
+            List<String> command=new ArrayList<>(findPython()); command.add("-u"); command.add(scriptPath.toString());
+            ProcessBuilder pb=new ProcessBuilder(command);
             pb.directory(ScriptPaths.root().toFile());
             var env=pb.environment();
             env.remove("PERIPHERAL_API_KEY");
@@ -348,16 +349,18 @@ public class ScriptRunner {
         }
     }
 
-    private static String findPython() {
+    // "py -3" is the Windows launcher; python.org installs it even when python isn't on PATH.
+    private static List<String> findPython() {
         if (cachedPython != null) return cachedPython;
-        for (String exe : new String[]{"python3", "python"}) {
+        for (List<String> exe : List.of(List.of("python3"), List.of("python"), List.of("py", "-3"))) {
             try {
-                int exit = new ProcessBuilder(exe, "--version")
+                List<String> probe = new ArrayList<>(exe); probe.add("--version");
+                int exit = new ProcessBuilder(probe)
                     .redirectErrorStream(true).start().waitFor();
                 if (exit == 0) { cachedPython = exe; return exe; }
             } catch (Exception ignored) {}
         }
-        cachedPython = "python3";
+        cachedPython = List.of("python3");
         return cachedPython;
     }
 }

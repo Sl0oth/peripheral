@@ -263,7 +263,7 @@ every(30, lambda: say('still here'))   # repeating timer on the dispatcher threa
 run()   # block main thread so callbacks keep firing; Ctrl-C / Stop exits cleanly
 ```
 
-Decorators auto-subscribe over the socket. Prefer event payloads for event values. `gui_input()` and `gui_is_open()` use the non-consuming `gui_peek()` path in 1.3.1; older versions consumed queued events.
+Decorators auto-subscribe over the socket. Prefer event payloads for event values. `gui_input()` and `gui_is_open()` use the non-consuming `gui_peek()` path since 2.0.0; older versions consumed queued events.
 
 ## Notifications & Sound
 

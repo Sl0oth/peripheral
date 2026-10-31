@@ -1066,7 +1066,7 @@ public class PeripheralScreen extends UiScreen {
     private void createNewFolder() {
         String name = "folder";
         int n = 2;
-        Path dir = slooth.peripheral.script.ScriptPaths.resolve(scriptsPanel.folderPath().toString());
+        Path dir = slooth.peripheral.script.ScriptPaths.resolve(scriptsPanel.folderPath().toString().replace(java.io.File.separatorChar, '/'));
         while (Files.exists(dir.resolve(name))) {
             name = "folder_" + n++;
         }
@@ -1228,7 +1228,7 @@ public class PeripheralScreen extends UiScreen {
     private void createNewScript() {
         String name = "script.py";
         int n = 2;
-        Path dir = slooth.peripheral.script.ScriptPaths.resolve(scriptsPanel.folderPath().toString());
+        Path dir = slooth.peripheral.script.ScriptPaths.resolve(scriptsPanel.folderPath().toString().replace(java.io.File.separatorChar, '/'));
         while (Files.exists(dir.resolve(name))) {
             name = "script_" + n++ + ".py";
         }

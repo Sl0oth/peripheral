@@ -1,6 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [2.0.0] — 2026-10-30
+
+The first release on Minecraft 26.2 and PaneLib. It also includes the 1.3.1 work, which was prepared but never published.
 
 - Now targets **Minecraft 26.2** (Fabric Loader 0.19.3+, Fabric API 0.157.0+26.2). The screens use the published PaneLib library instead of a private copy, so PaneLib fixes reach Peripheral directly. **PaneLib is now a separate required download**: install PaneLib 1.0.0-beta.3 or newer alongside Peripheral.
 - A script's output now follows the newest line while you're at the bottom. Scroll up to read, and a **Jump to latest** bar brings you back. This replaces the Follow latest switch.
@@ -42,9 +44,10 @@
   - Cancelling, holding and sending work in singleplayer, and on servers that install **Peripheral Testing** (a small plugin for Paper and Spigot, or a mod for Fabric servers). The log works everywhere.
   - Keep-alive packets always go through, a status line shows whenever anything is changed, and a script's changes end when it stops.
 - Peripheral's key bindings now have readable names in Options › Controls.
+- On Windows, Peripheral also finds Python through the `py` launcher, so scripts run even when Python isn't on PATH.
 - The panel's hand-drawn buttons now have names for the narrator and for scripts.
 
-## [1.3.1] — 2026-10-17 (prepared, unpublished)
+### Also in 2.0.0 (prepared as 1.3.1, never published)
 
 - Added an optional authenticated local MCP server, off by default, with saved enable/disable, persistent connection key and Copy connection in Settings. Includes game-state/player-control/navigation and installed-script Run/Stop tools.
 - Rebuilt the control panel, script workspace, editor, Build picker, dialogs and script windows with the bundled PaneLib interface. Improved compact/fullscreen layouts and sharpness.
@@ -57,9 +60,7 @@
 - Added a local terminal example and read-only Trail HUD; corrected Control Center tabs/dropdown and both reference examples' held-item reads. Fixed `block_at()` to return the documented namespaced block ID.
 - Added GUI event/output recipes and `PERIPHERAL_API_CURRENT.md`, refreshed each launch while preserving the older starter reference and user-edited examples.
 - **External API change:** HTTP/TCP access now requires a session capability. Bundled scripts receive theirs automatically; external tools must follow `LOCAL_API.md`. Browser-origin access is rejected. Provider keys are no longer injected into scripts or exposed in API config. Python itself remains trusted native code, not sandboxed.
-- This artifact targets **Minecraft 26.1.2 / Fabric / Java 25**, tested with Loader 0.19.1 and Fabric API 0.145.4+26.1.2. Python 3 is required for scripts; Mod Menu and Baritone are optional. No separate PaneLib download is needed.
-
-Survival wood harvesting is not added: a public `mine()` probe did not complete the log break. Paid AI generation, native narration, other operating systems and multiplayer are not verified by this release's local acceptance runs.
+- Python 3 is required for scripts; Mod Menu and Baritone are optional.
 
 ## [1.1.0] – 2026-04-24
 

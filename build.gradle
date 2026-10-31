@@ -115,4 +115,22 @@ if (providers.gradleProperty('pilotTest').isPresent()) {
     }
 }
 
+// Opt-in: start the real game the way players install it, with the release jar, PaneLib and Fabric API
+// as separate files in a mods folder. tools/install_check.py drives it. -PprodNoPanelib leaves PaneLib out.
+if (providers.gradleProperty('prodTest').isPresent()) {
+    configurations { prodMods { transitive = false } }
+    dependencies {
+        prodMods "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+        if (!providers.gradleProperty('prodNoPanelib').isPresent()) {
+            prodMods "dev.pane:panelib:${providers.gradleProperty('panelibVersion').getOrElse(project.panelib_version)}"
+        }
+    }
+    tasks.register('prodClient', net.fabricmc.loom.task.prod.ClientProductionRunTask) {
+        mods.from(tasks.named('jar'))
+        mods.from(configurations.prodMods)
+        runDir = file('run-prod')
+        useXVFB = providers.gradleProperty('prodXvfb').isPresent()
+    }
+}
+
 processClientResources { exclude "**/__pycache__/**" }

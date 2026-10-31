@@ -21,7 +21,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Java 25 is required.** The toolchain is pinned in `build.gradle` (`JavaLanguageVersion.of(25)`). On macOS use the Zulu JDK 25 distribution — the IntelliJ run configuration expects a JDK named `zulu-25`.
 
-There are no automated tests.
+There are no unit tests. In-game checks are opt-in and never part of a release build:
+
+```bash
+# Real-client audits (the whole-UI one stays open after "WHOLE UI READY"; close it yourself)
+JAVA_TOOL_OPTIONS="-Dperipheral.wholeUiAudit=true" ./gradlew runClient -PpilotTest
+JAVA_TOOL_OPTIONS="-Dperipheral.recorderAudit=true" ./gradlew runClient -PpilotTest
+
+# Real install: release jar, PaneLib and Fabric API as separate mods (--no-panelib, --xvfb on Linux)
+python3 tools/install_check.py
+```
 
 ## Architecture
 
@@ -108,7 +117,7 @@ transitions.
 
 ### Rendering: PaneLib and native game overlays
 
-Application screens extend PaneLib's `UiScreen` (`dev.pane:panelib` from Maven, bundled with Loom `include`; `-PpanelibRepo=<dir> -PpanelibVersion=<v>` builds against a local PaneLib checkout). Use `PeripheralUi` for shared fonts, colors, document scaling and raster settings. **Use PaneLib's own controls instead of hand-drawing them**: `ui.button(id, label, UiIcon…, …)` for icon buttons, `ui.menuButton(…, icon, …)` for menus, `ui.iconButton` with a label, `screen.showDialog(id, new UiDialog(…, PeripheralUi.DANGER_DIALOG))` for confirmations, `pushFocusScope` + `ui.textField` + `requestFocus(id, anchor, cursor)` for custom sheets like rename, `UiScrollFollow.WHEN_AT_END` with `scrollToEnd`/`scrollAtEnd`/`scrollOffset` for logs. If PaneLib can't do something cleanly, add it to PaneLib (with tests) rather than working around it here, and keep the addition small and easy to use. Scroll positions are not `scroll:<id>` values any more; use `scrollTo`/`scrollSnapshot`. Keep the Scripts design (`ScriptsPanel`, charcoal with lime for Run and the current item) consistent. `LineEdit` remains only in `ScriptableScreen` (script-authored inputs) and is still to be replaced by PaneLib text input.
+Application screens extend PaneLib's `UiScreen` (`dev.pane:panelib` from Maven; players install it as a separate required mod; `-PpanelibRepo=<dir> -PpanelibVersion=<v>` builds against a local PaneLib checkout). Use `PeripheralUi` for shared fonts, colors, document scaling and raster settings. **Use PaneLib's own controls instead of hand-drawing them**: `ui.button(id, label, UiIcon…, …)` for icon buttons, `ui.menuButton(…, icon, …)` for menus, `ui.iconButton` with a label, `screen.showDialog(id, new UiDialog(…, PeripheralUi.DANGER_DIALOG))` for confirmations, `pushFocusScope` + `ui.textField` + `requestFocus(id, anchor, cursor)` for custom sheets like rename, `UiScrollFollow.WHEN_AT_END` with `scrollToEnd`/`scrollAtEnd`/`scrollOffset` for logs. If PaneLib can't do something cleanly, add it to PaneLib (with tests) rather than working around it here, and keep the addition small and easy to use. Scroll positions are not `scroll:<id>` values any more; use `scrollTo`/`scrollSnapshot`. Keep the Scripts design (`ScriptsPanel`, charcoal with lime for Run and the current item) consistent. `LineEdit` remains only in `ScriptableScreen` (script-authored inputs) and is still to be replaced by PaneLib text input.
 
 Native Minecraft items and world HUD editing still use `GuiGraphicsExtractor` in the screen's native overlay hooks. Scriptable layouts retain Minecraft GUI coordinates through a scale transform; do not silently reinterpret author coordinates or explicit theme/color choices. Popup overlays must remain above native item sprites.
 
@@ -118,7 +127,7 @@ Native Minecraft items and world HUD editing still use `GuiGraphicsExtractor` in
 - All widget state lives in `widgetMap` (a `ConcurrentHashMap<String, JsonObject>`). The render thread reads it under `synchronized(widgetOrder)`; the HTTP thread writes via `update()` which also holds that lock.
 - `openDropdownId` tracks which dropdown popup is open; the popup is rendered last (after `super.extractRenderState`) so it floats above everything.
 - Tabs work via a `'tab': 'tab_id'` property on any widget. `buildActiveTabs()` collects currently-selected tab IDs; `isTabVisible()` gates rendering and mouse handling.
-- Each `GET /gui` / `gui_state()` / `gui_poll()` call pops one event. Use one snapshot for event and input values. `GET /gui_peek` / `gui_peek()` reads open/inputs without consuming events; `gui_input()` and `gui_is_open()` use this safe path in 1.3.1. Older helper versions consumed events, so keep existing handlers on the single-snapshot recipe.
+- Each `GET /gui` / `gui_state()` / `gui_poll()` call pops one event. Use one snapshot for event and input values. `GET /gui_peek` / `gui_peek()` reads open/inputs without consuming events; `gui_input()` and `gui_is_open()` use this safe path since 2.0.0. Older helper versions consumed events, so keep existing handlers on the single-snapshot recipe.
 - `clearIfOwner(scriptName)` closes the screen and wipes the layout when the owning script stops.
 
 ### PeripheralScreen tabs

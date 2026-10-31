@@ -57,6 +57,7 @@ Ui Examples/
 # Disposable pilot client and private local authorization capabilities
 run-pilot-audit/
 run-server/
+run-prod/
 testing/fabric/run/
 config/peripheral/local-api.token
 config/peripheral/.local-api-*.tmp
@@ -67,7 +68,7 @@ config/peripheral/mcp.token
 # Local tooling, test output and release builds
 .claude/
 .claire/
-audit/
-release/
-net/
+/audit/
+/release/
+/net/
 __pycache__/

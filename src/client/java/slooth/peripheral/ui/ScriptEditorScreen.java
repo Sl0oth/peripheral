@@ -91,8 +91,8 @@ public class ScriptEditorScreen extends UiScreen {
         ref.v = this;
         this.parent     = parent;
         this.scriptName = scriptName;
-        this.scriptPath = slooth.peripheral.script.ScriptPaths.resolve(
-            scriptName.replace('/', java.io.File.separatorChar));
+        // ScriptPaths takes '/' on every OS and rejects '\\', so don't convert to Windows separators.
+        this.scriptPath = slooth.peripheral.script.ScriptPaths.resolve(scriptName);
         loadFile();
     }
 
